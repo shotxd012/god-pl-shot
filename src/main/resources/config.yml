@@ -1,0 +1,22 @@
+# Shot-PL Configuration
+
+# Welcome message settings
+welcome:
+  # Enable or disable the welcome message
+  enabled: true
+  # The welcome message that will be shown to players when they join
+  # Available placeholders:
+  # {player} - Player's name
+  # {server} - Server name
+  message: "§b§lShot-PL §7» §fWelcome {player} to the server!"
+
+# API settings
+api:
+  # Enable or disable the API
+  enabled: true
+  # The port the API will run on
+  port: 8080
+  # API authentication (optional)
+  auth:
+    enabled: false
+    token: "your-secret-token-here" 

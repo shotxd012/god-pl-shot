@@ -1,0 +1,24 @@
+name: Shot-PL
+version: 1.1.4
+main: com.example.ShotPL
+api-version: 1.20
+authors: [shotxd]
+description: A Minecraft plugin for shot-pl
+commands:
+  stats:
+    description: View player statistics
+    usage: /stats [player]
+    aliases: [stat, statistics]
+    permission: shotpl.stats
+  leaderboard:
+    description: View server leaderboards
+    usage: /leaderboard [category]
+    aliases: [lb, top]
+    permission: shotpl.leaderboard
+permissions:
+  shotpl.stats:
+    description: Allows viewing player statistics
+    default: true
+  shotpl.leaderboard:
+    description: Allows viewing server leaderboards
+    default: true 
