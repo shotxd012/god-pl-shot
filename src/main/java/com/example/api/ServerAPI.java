@@ -318,78 +318,74 @@ public class ServerAPI {
                 }
 
                 Map<String, Object> response = new HashMap<>();
-
                 response.put("uuid", playerUuid.toString());
                 response.put("is_online", player != null);
 
+                // Get base stats from database
+                Map<String, Object> dbStats = plugin.getDatabaseManager().getPlayerStats(playerUuid);
+                if (dbStats.isEmpty()) {
+                    sendResponse(exchange, 404, gson.toJson(Map.of("error", "Player not found")));
+                    return;
+                }
+
+                // Add database stats to response
+                response.putAll(dbStats);
+
                 if (player != null) {
-                    // Live player statistics
+                    // Player is online - update with live statistics
                     response.put("name", player.getName());
-
-                    Map<String, Object> detailedStats = new HashMap<>();
-
+                    
+                    Map<String, Object> liveStats = new HashMap<>();
+                    
                     // Block statistics
-                    detailedStats.put("blocks_broken", player.getStatistic(org.bukkit.Statistic.MINE_BLOCK));
-                    detailedStats.put("blocks_placed", getSafeStatistic(player, org.bukkit.Statistic.USE_ITEM));
-
+                    liveStats.put("blocks_broken", getSafeStatistic(player, org.bukkit.Statistic.MINE_BLOCK));
+                    liveStats.put("blocks_placed", getSafeStatistic(player, org.bukkit.Statistic.USE_ITEM));
+                    
                     // Combat statistics
-                    detailedStats.put("deaths", player.getStatistic(org.bukkit.Statistic.DEATHS));
-                    detailedStats.put("player_kills", player.getStatistic(org.bukkit.Statistic.PLAYER_KILLS));
-                    detailedStats.put("mob_kills", player.getStatistic(org.bukkit.Statistic.MOB_KILLS));
-                    detailedStats.put("damage_taken", player.getStatistic(org.bukkit.Statistic.DAMAGE_TAKEN));
-                    detailedStats.put("damage_dealt", player.getStatistic(org.bukkit.Statistic.DAMAGE_DEALT));
-
+                    liveStats.put("deaths", player.getStatistic(org.bukkit.Statistic.DEATHS));
+                    liveStats.put("kills", player.getStatistic(org.bukkit.Statistic.PLAYER_KILLS));
+                    liveStats.put("mob_kills", player.getStatistic(org.bukkit.Statistic.MOB_KILLS));
+                    liveStats.put("damage_taken", player.getStatistic(org.bukkit.Statistic.DAMAGE_TAKEN));
+                    liveStats.put("damage_dealt", player.getStatistic(org.bukkit.Statistic.DAMAGE_DEALT));
+                    
                     // Movement statistics
-                    detailedStats.put("distance_walked_cm", player.getStatistic(org.bukkit.Statistic.WALK_ONE_CM));
-                    detailedStats.put("distance_sprinted_cm", player.getStatistic(org.bukkit.Statistic.SPRINT_ONE_CM));
-                    detailedStats.put("distance_swum_cm", player.getStatistic(org.bukkit.Statistic.SWIM_ONE_CM));
-                    detailedStats.put("distance_flown_cm", player.getStatistic(org.bukkit.Statistic.FLY_ONE_CM));
-                    detailedStats.put("total_distance_cm", player.getStatistic(org.bukkit.Statistic.WALK_ONE_CM) + 
+                    liveStats.put("distance_walked", player.getStatistic(org.bukkit.Statistic.WALK_ONE_CM));
+                    liveStats.put("distance_sprinted", player.getStatistic(org.bukkit.Statistic.SPRINT_ONE_CM));
+                    liveStats.put("distance_swum", player.getStatistic(org.bukkit.Statistic.SWIM_ONE_CM));
+                    liveStats.put("distance_flown", player.getStatistic(org.bukkit.Statistic.FLY_ONE_CM));
+                    liveStats.put("total_distance", 
+                        player.getStatistic(org.bukkit.Statistic.WALK_ONE_CM) + 
                         player.getStatistic(org.bukkit.Statistic.SPRINT_ONE_CM) + 
                         player.getStatistic(org.bukkit.Statistic.SWIM_ONE_CM) + 
                         player.getStatistic(org.bukkit.Statistic.FLY_ONE_CM));
-                    detailedStats.put("jumps", player.getStatistic(org.bukkit.Statistic.JUMP));
-
+                    liveStats.put("jumps", player.getStatistic(org.bukkit.Statistic.JUMP));
+                    
                     // Activity statistics
-                    detailedStats.put("fish_caught", player.getStatistic(org.bukkit.Statistic.FISH_CAUGHT));
-                    detailedStats.put("animals_bred", player.getStatistic(org.bukkit.Statistic.ANIMALS_BRED));
-                    detailedStats.put("items_crafted", getSafeStatistic(player, org.bukkit.Statistic.CRAFT_ITEM));
-                    detailedStats.put("items_dropped", player.getStatistic(org.bukkit.Statistic.DROP));
-
-                    // Time statistics
-                    detailedStats.put("time_played_ticks", player.getStatistic(org.bukkit.Statistic.PLAY_ONE_MINUTE));
-                    detailedStats.put("time_played_hours", player.getStatistic(org.bukkit.Statistic.PLAY_ONE_MINUTE) / 72000.0);
-
+                    liveStats.put("fish_caught", player.getStatistic(org.bukkit.Statistic.FISH_CAUGHT));
+                    liveStats.put("animals_bred", player.getStatistic(org.bukkit.Statistic.ANIMALS_BRED));
+                    liveStats.put("items_crafted", getSafeStatistic(player, org.bukkit.Statistic.CRAFT_ITEM));
+                    liveStats.put("items_dropped", player.getStatistic(org.bukkit.Statistic.DROP));
+                    
                     // Player status
-                    detailedStats.put("health", player.getHealth());
-                    detailedStats.put("max_health", player.getMaxHealth());
-                    detailedStats.put("food_level", player.getFoodLevel());
-                    detailedStats.put("saturation", player.getSaturation());
-                    detailedStats.put("level", player.getLevel());
-                    detailedStats.put("exp", player.getExp());
-                    detailedStats.put("total_experience", player.getTotalExperience());
-                    detailedStats.put("game_mode", player.getGameMode().toString());
-                    detailedStats.put("world", player.getWorld().getName());
-                    detailedStats.put("location", Arrays.asList(
+                    liveStats.put("health", player.getHealth());
+                    liveStats.put("max_health", player.getMaxHealth());
+                    liveStats.put("food_level", player.getFoodLevel());
+                    liveStats.put("saturation", player.getSaturation());
+                    liveStats.put("level", player.getLevel());
+                    liveStats.put("exp", player.getExp());
+                    liveStats.put("total_experience", player.getTotalExperience());
+                    liveStats.put("game_mode", player.getGameMode().toString());
+                    liveStats.put("world", player.getWorld().getName());
+                    liveStats.put("location", Arrays.asList(
                         player.getLocation().getX(),
                         player.getLocation().getY(),
                         player.getLocation().getZ()
                     ));
-                    detailedStats.put("ping", player.getPing());
+                    liveStats.put("ping", player.getPing());
+                    liveStats.put("last_updated", new Timestamp(System.currentTimeMillis()).toString());
 
-                    response.put("statistics", detailedStats);
-
-                    // Also include database stats
-                    Map<String, Object> dbStats = plugin.getDatabaseManager().getPlayerStats(playerUuid);
-                    response.putAll(dbStats);
-                } else {
-                    // Player is offline, get data from database only
-                    Map<String, Object> dbStats = plugin.getDatabaseManager().getPlayerStats(playerUuid);
-                    if (dbStats.isEmpty()) {
-                        sendResponse(exchange, 404, gson.toJson(Map.of("error", "Player not found")));
-                        return;
-                    }
-                    response.putAll(dbStats);
+                    // Update the statistics in the response
+                    response.put("statistics", liveStats);
                 }
 
                 sendResponse(exchange, 200, gson.toJson(response));
