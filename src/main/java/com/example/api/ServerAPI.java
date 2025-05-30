@@ -317,10 +317,6 @@ public class ServerAPI {
                     }
                 }
 
-                Map<String, Object> response = new HashMap<>();
-                response.put("uuid", playerUuid.toString());
-                response.put("is_online", player != null);
-
                 // Get base stats from database
                 Map<String, Object> dbStats = plugin.getDatabaseManager().getPlayerStats(playerUuid);
                 if (dbStats.isEmpty()) {
@@ -328,8 +324,13 @@ public class ServerAPI {
                     return;
                 }
 
-                // Add database stats to response
-                response.putAll(dbStats);
+                Map<String, Object> response = new HashMap<>();
+                response.put("uuid", playerUuid.toString());
+                response.put("is_online", player != null);
+                response.put("achievements", dbStats.get("achievements"));
+                response.put("login_history", dbStats.get("login_history"));
+                response.put("total_playtime", dbStats.get("total_playtime"));
+                response.put("first_join", dbStats.get("first_join"));
 
                 if (player != null) {
                     // Player is online - update with live statistics
@@ -365,27 +366,14 @@ public class ServerAPI {
                     liveStats.put("animals_bred", player.getStatistic(org.bukkit.Statistic.ANIMALS_BRED));
                     liveStats.put("items_crafted", getSafeStatistic(player, org.bukkit.Statistic.CRAFT_ITEM));
                     liveStats.put("items_dropped", player.getStatistic(org.bukkit.Statistic.DROP));
+                    liveStats.put("food_eaten", player.getStatistic(org.bukkit.Statistic.ANIMALS_BRED));
                     
-                    // Player status
-                    liveStats.put("health", player.getHealth());
-                    liveStats.put("max_health", player.getMaxHealth());
-                    liveStats.put("food_level", player.getFoodLevel());
-                    liveStats.put("saturation", player.getSaturation());
-                    liveStats.put("level", player.getLevel());
-                    liveStats.put("exp", player.getExp());
-                    liveStats.put("total_experience", player.getTotalExperience());
-                    liveStats.put("game_mode", player.getGameMode().toString());
-                    liveStats.put("world", player.getWorld().getName());
-                    liveStats.put("location", Arrays.asList(
-                        player.getLocation().getX(),
-                        player.getLocation().getY(),
-                        player.getLocation().getZ()
-                    ));
-                    liveStats.put("ping", player.getPing());
                     liveStats.put("last_updated", new Timestamp(System.currentTimeMillis()).toString());
 
-                    // Update the statistics in the response
                     response.put("statistics", liveStats);
+                } else {
+                    // For offline players, use the database statistics
+                    response.put("statistics", dbStats.get("statistics"));
                 }
 
                 sendResponse(exchange, 200, gson.toJson(response));
