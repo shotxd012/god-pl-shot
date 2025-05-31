@@ -471,9 +471,8 @@ public class DatabaseManager {
     }
 
     public String getVerificationCode(UUID playerUuid) {
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "SELECT verification_code FROM player_verification WHERE player_uuid = ?")) {
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "SELECT verification_code FROM player_verification WHERE player_uuid = ?")) {
             stmt.setString(1, playerUuid.toString());
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
@@ -486,9 +485,8 @@ public class DatabaseManager {
     }
 
     public boolean isPlayerVerified(UUID playerUuid) {
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "SELECT is_verified FROM player_verification WHERE player_uuid = ?")) {
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "SELECT is_verified FROM player_verification WHERE player_uuid = ?")) {
             stmt.setString(1, playerUuid.toString());
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
@@ -501,9 +499,8 @@ public class DatabaseManager {
     }
 
     public void saveVerificationCode(UUID playerUuid, String code) {
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO player_verification (player_uuid, verification_code, is_verified, created_at) VALUES (?, ?, false, CURRENT_TIMESTAMP)")) {
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "INSERT OR REPLACE INTO player_verification (player_uuid, verification_code, is_verified, created_at) VALUES (?, ?, false, CURRENT_TIMESTAMP)")) {
             stmt.setString(1, playerUuid.toString());
             stmt.setString(2, code);
             stmt.executeUpdate();
@@ -513,9 +510,8 @@ public class DatabaseManager {
     }
 
     public void setPlayerVerified(UUID playerUuid, boolean verified) {
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "UPDATE player_verification SET is_verified = ?, verified_at = CURRENT_TIMESTAMP WHERE player_uuid = ?")) {
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "UPDATE player_verification SET is_verified = ?, verified_at = CURRENT_TIMESTAMP WHERE player_uuid = ?")) {
             stmt.setBoolean(1, verified);
             stmt.setString(2, playerUuid.toString());
             stmt.executeUpdate();
