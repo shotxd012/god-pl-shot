@@ -2,13 +2,12 @@ package com.example;
 
 // Removed stats imports
 import com.example.api.ServerAPI;
-import com.example.commands.LeaderboardCommand;
+import com.example.commands.VerifyCommand;
 import com.example.database.DatabaseManager;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -30,19 +29,21 @@ public class ShotPL extends JavaPlugin implements Listener {
         // Initialize database
         databaseManager = new DatabaseManager(this);
 
-        // Initialize API server
-        api = new ServerAPI(this);
-        api.start();
-
-        // Register events
-        getServer().getPluginManager().registerEvents(this, this);
-
         // Register commands
-        getCommand("leaderboard").setExecutor(new LeaderboardCommand(this));
+        getCommand("verify").setExecutor(new VerifyCommand(this));
+
+        // Register event listeners
+        getServer().getPluginManager().registerEvents(new PlayerListener(this), this);
+
+        // Start API server if enabled
+        if (getConfig().getBoolean("api.enabled", false)) {
+            api = new ServerAPI(this);
+            api.start();
+        }
 
         // Log startup message
-        getLogger().info("» Plugin has been enabled!");
-        getLogger().info("» Version: " + getDescription().getVersion());
+        getLogger().info("Shot-PL has been enabled!");
+        getLogger().info("Version: " + getDescription().getVersion());
     }
 
     @Override
@@ -58,7 +59,7 @@ public class ShotPL extends JavaPlugin implements Listener {
         }
 
         // Log shutdown message
-        getLogger().info("» Plugin has been disabled!");
+        getLogger().info("Plugin has been disabled!");
     }
 
     @EventHandler
@@ -86,7 +87,6 @@ public class ShotPL extends JavaPlugin implements Listener {
     public void onPlayerQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
         databaseManager.recordPlayerLogout(player);
-        // Statistics are automatically updated in recordPlayerLogout method
     }
 
     public DatabaseManager getDatabaseManager() {

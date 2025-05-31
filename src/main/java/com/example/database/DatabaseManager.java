@@ -22,6 +22,15 @@ public class DatabaseManager {
             
             // Create tables if they don't exist
             try (Statement stmt = connection.createStatement()) {
+                // Verification table
+                stmt.execute("CREATE TABLE IF NOT EXISTS player_verification (" +
+                    "player_uuid TEXT PRIMARY KEY," +
+                    "verification_code TEXT," +
+                    "is_verified BOOLEAN DEFAULT FALSE," +
+                    "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                    "verified_at TIMESTAMP" +
+                    ")");
+
                 // Player sessions table
                 stmt.execute("CREATE TABLE IF NOT EXISTS player_sessions (" +
                     "id INTEGER PRIMARY KEY AUTOINCREMENT," +
@@ -459,5 +468,55 @@ public class DatabaseManager {
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to close database connection: " + e.getMessage());
         }
+    }
+
+    public void saveVerificationCode(UUID playerUuid, String code) {
+        String sql = "INSERT OR REPLACE INTO player_verification (player_uuid, verification_code, is_verified) VALUES (?, ?, FALSE)";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, playerUuid.toString());
+            pstmt.setString(2, code);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to save verification code: " + e.getMessage());
+        }
+    }
+
+    public String getVerificationCode(UUID playerUuid) {
+        String sql = "SELECT verification_code FROM player_verification WHERE player_uuid = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, playerUuid.toString());
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getString("verification_code");
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to get verification code: " + e.getMessage());
+        }
+        return null;
+    }
+
+    public void setPlayerVerified(UUID playerUuid, boolean verified) {
+        String sql = "UPDATE player_verification SET is_verified = ?, verified_at = CURRENT_TIMESTAMP WHERE player_uuid = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setBoolean(1, verified);
+            pstmt.setString(2, playerUuid.toString());
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to set player verification status: " + e.getMessage());
+        }
+    }
+
+    public boolean isPlayerVerified(UUID playerUuid) {
+        String sql = "SELECT is_verified FROM player_verification WHERE player_uuid = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, playerUuid.toString());
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getBoolean("is_verified");
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to check player verification status: " + e.getMessage());
+        }
+        return false;
     }
 } 
