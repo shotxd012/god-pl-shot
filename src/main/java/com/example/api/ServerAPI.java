@@ -429,6 +429,21 @@ public class ServerAPI {
 
     private int getSafeStatistic(Player player, org.bukkit.Statistic statistic) {
         try {
+            if (statistic == org.bukkit.Statistic.MINE_BLOCK || 
+                statistic == org.bukkit.Statistic.USE_ITEM || 
+                statistic == org.bukkit.Statistic.CRAFT_ITEM) {
+                int total = 0;
+                for (org.bukkit.Material material : org.bukkit.Material.values()) {
+                    if (material.isItem() || material.isBlock()) {
+                        try {
+                            total += player.getStatistic(statistic, material);
+                        } catch (Exception ignored) {
+                            // Some materials might not be valid for this statistic
+                        }
+                    }
+                }
+                return total;
+            }
             return player.getStatistic(statistic);
         } catch (Exception e) {
             plugin.getLogger().warning("Failed to get statistic " + statistic.name() + " for player " + player.getName() + ": " + e.getMessage());

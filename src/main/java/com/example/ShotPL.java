@@ -41,8 +41,8 @@ public class ShotPL extends JavaPlugin implements Listener {
         getCommand("leaderboard").setExecutor(new LeaderboardCommand(this));
 
         // Log startup message
-        getLogger().info("§a§lShot-PL §7» §fPlugin has been enabled!");
-        getLogger().info("§a§lShot-PL §7» §fVersion: " + getDescription().getVersion());
+        getLogger().info("» Plugin has been enabled!");
+        getLogger().info("» Version: " + getDescription().getVersion());
     }
 
     @Override
