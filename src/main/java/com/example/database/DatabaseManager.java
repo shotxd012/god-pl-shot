@@ -470,53 +470,58 @@ public class DatabaseManager {
         }
     }
 
-    public void saveVerificationCode(UUID playerUuid, String code) {
-        String sql = "INSERT OR REPLACE INTO player_verification (player_uuid, verification_code, is_verified) VALUES (?, ?, FALSE)";
-        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
-            pstmt.setString(1, playerUuid.toString());
-            pstmt.setString(2, code);
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("Failed to save verification code: " + e.getMessage());
-        }
-    }
-
     public String getVerificationCode(UUID playerUuid) {
-        String sql = "SELECT verification_code FROM player_verification WHERE player_uuid = ?";
-        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
-            pstmt.setString(1, playerUuid.toString());
-            ResultSet rs = pstmt.executeQuery();
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                     "SELECT verification_code FROM player_verification WHERE player_uuid = ?")) {
+            stmt.setString(1, playerUuid.toString());
+            ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
                 return rs.getString("verification_code");
             }
         } catch (SQLException e) {
-            plugin.getLogger().severe("Failed to get verification code: " + e.getMessage());
+            plugin.getLogger().warning("Error getting verification code for player " + playerUuid + ": " + e.getMessage());
         }
         return null;
     }
 
-    public void setPlayerVerified(UUID playerUuid, boolean verified) {
-        String sql = "UPDATE player_verification SET is_verified = ?, verified_at = CURRENT_TIMESTAMP WHERE player_uuid = ?";
-        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
-            pstmt.setBoolean(1, verified);
-            pstmt.setString(2, playerUuid.toString());
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("Failed to set player verification status: " + e.getMessage());
-        }
-    }
-
     public boolean isPlayerVerified(UUID playerUuid) {
-        String sql = "SELECT is_verified FROM player_verification WHERE player_uuid = ?";
-        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
-            pstmt.setString(1, playerUuid.toString());
-            ResultSet rs = pstmt.executeQuery();
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                     "SELECT is_verified FROM player_verification WHERE player_uuid = ?")) {
+            stmt.setString(1, playerUuid.toString());
+            ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
                 return rs.getBoolean("is_verified");
             }
         } catch (SQLException e) {
-            plugin.getLogger().severe("Failed to check player verification status: " + e.getMessage());
+            plugin.getLogger().warning("Error checking verification status for player " + playerUuid + ": " + e.getMessage());
         }
         return false;
     }
+
+    public void saveVerificationCode(UUID playerUuid, String code) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                     "INSERT OR REPLACE INTO player_verification (player_uuid, verification_code, is_verified, created_at) VALUES (?, ?, false, CURRENT_TIMESTAMP)")) {
+            stmt.setString(1, playerUuid.toString());
+            stmt.setString(2, code);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().warning("Error saving verification code for player " + playerUuid + ": " + e.getMessage());
+        }
+    }
+
+    public void setPlayerVerified(UUID playerUuid, boolean verified) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                     "UPDATE player_verification SET is_verified = ?, verified_at = CURRENT_TIMESTAMP WHERE player_uuid = ?")) {
+            stmt.setBoolean(1, verified);
+            stmt.setString(2, playerUuid.toString());
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().warning("Error updating verification status for player " + playerUuid + ": " + e.getMessage());
+        }
+    }
+} 
 } 

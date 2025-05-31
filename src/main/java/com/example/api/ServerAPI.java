@@ -22,6 +22,8 @@ import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import org.bukkit.entity.EntityType;
+import java.util.logging.Level;
 
 public class ServerAPI {
     private final ShotPL plugin;
@@ -32,6 +34,7 @@ public class ServerAPI {
     private int tpsIndex;
     private HttpServer server;
     private long lastTickTime;
+    private final Map<Statistic, EntityType> statisticEntityTypes;
 
     public ServerAPI(ShotPL plugin) {
         this.plugin = plugin;
@@ -41,9 +44,19 @@ public class ServerAPI {
         this.tickCount = new AtomicInteger(0);
         this.tpsHistory = new double[3];
         this.tpsIndex = 0;
+        this.statisticEntityTypes = new HashMap<>();
+        initializeStatisticEntityTypes();
 
         // Start TPS monitoring task
         Bukkit.getScheduler().runTaskTimer(plugin, this::updateTPS, 20L, 20L);
+    }
+
+    private void initializeStatisticEntityTypes() {
+        // Initialize entity types for statistics that require them
+        statisticEntityTypes.put(Statistic.KILL_ENTITY, EntityType.PLAYER);
+        statisticEntityTypes.put(Statistic.ENTITY_KILLED_BY, EntityType.PLAYER);
+        statisticEntityTypes.put(Statistic.DEATHS, EntityType.PLAYER);
+        // Add more mappings as needed
     }
 
     private void updateTPS() {
