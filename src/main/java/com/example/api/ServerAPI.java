@@ -404,9 +404,9 @@ public class ServerAPI {
             Bukkit.getScheduler().runTaskTimer(plugin, () -> tickCount.incrementAndGet(), 1L, 1L);
 
             server.start();
-            plugin.getLogger().info("API server started on port " + port);
+            plugin.getLogger().info("» API server started on port " + port);
         } catch (IOException e) {
-            plugin.getLogger().severe("Failed to start API server: " + e.getMessage());
+            plugin.getLogger().severe("» Failed to start API server: " + e.getMessage());
         }
     }
 
@@ -437,21 +437,43 @@ public class ServerAPI {
 
     private int getSafeStatistic(Player player, org.bukkit.Statistic statistic) {
         try {
+            // Handle statistics that require Material parameter
             if (statistic == org.bukkit.Statistic.MINE_BLOCK || 
                 statistic == org.bukkit.Statistic.USE_ITEM || 
-                statistic == org.bukkit.Statistic.CRAFT_ITEM) {
+                statistic == org.bukkit.Statistic.CRAFT_ITEM ||
+                statistic == org.bukkit.Statistic.BREAK_ITEM ||
+                statistic == org.bukkit.Statistic.PICKUP ||
+                statistic == org.bukkit.Statistic.DROP) {
                 int total = 0;
                 for (org.bukkit.Material material : org.bukkit.Material.values()) {
                     if (material.isItem() || material.isBlock()) {
                         try {
                             total += player.getStatistic(statistic, material);
                         } catch (Exception ignored) {
-                            // Some materials might not be valid for this statistic
+                            // Skip invalid materials
                         }
                     }
                 }
                 return total;
             }
+            
+            // Handle statistics that require EntityType parameter
+            if (statistic == org.bukkit.Statistic.KILL_ENTITY ||
+                statistic == org.bukkit.Statistic.ENTITY_KILLED_BY) {
+                int total = 0;
+                for (org.bukkit.entity.EntityType entityType : org.bukkit.entity.EntityType.values()) {
+                    if (entityType.isAlive()) {
+                        try {
+                            total += player.getStatistic(statistic, entityType);
+                        } catch (Exception ignored) {
+                            // Skip invalid entity types
+                        }
+                    }
+                }
+                return total;
+            }
+
+            // For simple statistics that don't require additional parameters
             return player.getStatistic(statistic);
         } catch (Exception e) {
             plugin.getLogger().warning("Failed to get statistic " + statistic.name() + " for player " + player.getName() + ": " + e.getMessage());

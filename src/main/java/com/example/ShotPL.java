@@ -58,7 +58,7 @@ public class ShotPL extends JavaPlugin implements Listener {
         }
 
         // Log shutdown message
-        getLogger().info("§c§lShot-PL §7» §fPlugin has been disabled!");
+        getLogger().info("» Plugin has been disabled!");
     }
 
     @EventHandler
