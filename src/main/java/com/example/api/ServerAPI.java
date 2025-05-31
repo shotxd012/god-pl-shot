@@ -394,12 +394,18 @@ public class ServerAPI {
                 statistic == org.bukkit.Statistic.DROP) {
                 int total = 0;
                 for (org.bukkit.Material material : org.bukkit.Material.values()) {
-                    if (material.isItem() || material.isBlock()) {
-                        try {
+                    try {
+                        // Check if the material is valid for this statistic
+                        if ((statistic == org.bukkit.Statistic.MINE_BLOCK && material.isBlock()) ||
+                            (statistic == org.bukkit.Statistic.USE_ITEM && material.isItem()) ||
+                            (statistic == org.bukkit.Statistic.CRAFT_ITEM && material.isItem()) ||
+                            (statistic == org.bukkit.Statistic.BREAK_ITEM && material.isItem() && material.getMaxDurability() > 0) ||
+                            (statistic == org.bukkit.Statistic.PICKUP && material.isItem()) ||
+                            (statistic == org.bukkit.Statistic.DROP && material.isItem())) {
                             total += player.getStatistic(statistic, material);
-                        } catch (Exception ignored) {
-                            // Skip invalid materials
                         }
+                    } catch (Exception ignored) {
+                        // Skip invalid materials for this statistic
                     }
                 }
                 return total;
@@ -424,7 +430,7 @@ public class ServerAPI {
             // For simple statistics that don't require additional parameters
             return player.getStatistic(statistic);
         } catch (Exception e) {
-            plugin.getLogger().warning("Failed to get statistic " + statistic.name() + " for player " + player.getName() + ": " + e.getMessage());
+            plugin.getLogger().log(Level.WARNING, "Failed to get statistic " + statistic.name() + " for player " + player.getName(), e);
             return 0;
         }
     }
@@ -435,35 +441,48 @@ public class ServerAPI {
             liveStats.put("blocks_broken", getSafeStatistic(player, org.bukkit.Statistic.MINE_BLOCK));
             liveStats.put("blocks_placed", getSafeStatistic(player, org.bukkit.Statistic.USE_ITEM));
             
-            // Combat statistics
-            liveStats.put("deaths", player.getStatistic(org.bukkit.Statistic.DEATHS));
-            liveStats.put("player_kills", player.getStatistic(org.bukkit.Statistic.PLAYER_KILLS));
-            liveStats.put("mob_kills", player.getStatistic(org.bukkit.Statistic.MOB_KILLS));
-            liveStats.put("jumps", player.getStatistic(org.bukkit.Statistic.JUMP));
-            liveStats.put("distance_walked_cm", player.getStatistic(org.bukkit.Statistic.WALK_ONE_CM));
-            liveStats.put("distance_sprinted_cm", player.getStatistic(org.bukkit.Statistic.SPRINT_ONE_CM));
-            liveStats.put("distance_swum_cm", player.getStatistic(org.bukkit.Statistic.SWIM_ONE_CM));
-            liveStats.put("distance_flown_cm", player.getStatistic(org.bukkit.Statistic.FLY_ONE_CM));
-            liveStats.put("total_distance_cm", 
-                player.getStatistic(org.bukkit.Statistic.WALK_ONE_CM) + 
-                player.getStatistic(org.bukkit.Statistic.SPRINT_ONE_CM) + 
-                player.getStatistic(org.bukkit.Statistic.SWIM_ONE_CM) + 
-                player.getStatistic(org.bukkit.Statistic.FLY_ONE_CM));
-            liveStats.put("damage_taken", player.getStatistic(org.bukkit.Statistic.DAMAGE_TAKEN));
-            liveStats.put("damage_dealt", player.getStatistic(org.bukkit.Statistic.DAMAGE_DEALT));
-            liveStats.put("fish_caught", player.getStatistic(org.bukkit.Statistic.FISH_CAUGHT));
-            liveStats.put("animals_bred", player.getStatistic(org.bukkit.Statistic.ANIMALS_BRED));
+            // Combat statistics - use getSafeStatistic for all
+            liveStats.put("deaths", getSafeStatistic(player, org.bukkit.Statistic.DEATHS));
+            liveStats.put("player_kills", getSafeStatistic(player, org.bukkit.Statistic.PLAYER_KILLS));
+            liveStats.put("mob_kills", getSafeStatistic(player, org.bukkit.Statistic.MOB_KILLS));
+            liveStats.put("jumps", getSafeStatistic(player, org.bukkit.Statistic.JUMP));
+            
+            // Movement statistics
+            int walkDistance = getSafeStatistic(player, org.bukkit.Statistic.WALK_ONE_CM);
+            int sprintDistance = getSafeStatistic(player, org.bukkit.Statistic.SPRINT_ONE_CM);
+            int swimDistance = getSafeStatistic(player, org.bukkit.Statistic.SWIM_ONE_CM);
+            int flyDistance = getSafeStatistic(player, org.bukkit.Statistic.FLY_ONE_CM);
+            
+            liveStats.put("distance_walked_cm", walkDistance);
+            liveStats.put("distance_sprinted_cm", sprintDistance);
+            liveStats.put("distance_swum_cm", swimDistance);
+            liveStats.put("distance_flown_cm", flyDistance);
+            liveStats.put("total_distance_cm", walkDistance + sprintDistance + swimDistance + flyDistance);
+            
+            // Other statistics
+            liveStats.put("damage_taken", getSafeStatistic(player, org.bukkit.Statistic.DAMAGE_TAKEN));
+            liveStats.put("damage_dealt", getSafeStatistic(player, org.bukkit.Statistic.DAMAGE_DEALT));
+            liveStats.put("fish_caught", getSafeStatistic(player, org.bukkit.Statistic.FISH_CAUGHT));
+            liveStats.put("animals_bred", getSafeStatistic(player, org.bukkit.Statistic.ANIMALS_BRED));
             liveStats.put("items_crafted", getSafeStatistic(player, org.bukkit.Statistic.CRAFT_ITEM));
-            liveStats.put("items_dropped", player.getStatistic(org.bukkit.Statistic.DROP));
-            liveStats.put("time_played_ticks", player.getStatistic(org.bukkit.Statistic.PLAY_ONE_MINUTE));
-            liveStats.put("time_played_hours", player.getStatistic(org.bukkit.Statistic.PLAY_ONE_MINUTE) / 72000.0);
+            liveStats.put("items_dropped", getSafeStatistic(player, org.bukkit.Statistic.DROP));
+            
+            // Time played statistics
+            int timePlayedTicks = getSafeStatistic(player, org.bukkit.Statistic.PLAY_ONE_MINUTE);
+            liveStats.put("time_played_ticks", timePlayedTicks);
+            liveStats.put("time_played_hours", timePlayedTicks / 72000.0);
 
             // Add verification status
-            boolean isVerified = plugin.getDatabaseManager().isPlayerVerified(player.getUniqueId());
-            liveStats.put("is_verified", isVerified);
-            if (!isVerified) {
-                String verificationCode = plugin.getDatabaseManager().getVerificationCode(player.getUniqueId());
-                liveStats.put("verification_code", verificationCode);
+            try {
+                boolean isVerified = plugin.getDatabaseManager().isPlayerVerified(player.getUniqueId());
+                liveStats.put("is_verified", isVerified);
+                if (!isVerified) {
+                    String verificationCode = plugin.getDatabaseManager().getVerificationCode(player.getUniqueId());
+                    liveStats.put("verification_code", verificationCode);
+                }
+            } catch (Exception e) {
+                plugin.getLogger().warning("Error getting verification status for player " + player.getName() + ": " + e.getMessage());
+                liveStats.put("is_verified", false);
             }
         } catch (Exception e) {
             plugin.getLogger().warning("Error getting live statistics for player " + player.getName() + ": " + e.getMessage());
