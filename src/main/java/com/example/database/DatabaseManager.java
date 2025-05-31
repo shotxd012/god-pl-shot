@@ -523,5 +523,4 @@ public class DatabaseManager {
             plugin.getLogger().warning("Error updating verification status for player " + playerUuid + ": " + e.getMessage());
         }
     }
-} 
-} 
+}
