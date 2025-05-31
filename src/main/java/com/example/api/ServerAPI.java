@@ -253,6 +253,14 @@ public class ServerAPI {
                         return;
                     }
 
+                    // Add verification information
+                    boolean isVerified = plugin.getDatabaseManager().isPlayerVerified(UUID.fromString(uuid));
+                    stats.put("is_verified", isVerified);
+                    if (!isVerified) {
+                        String verificationCode = plugin.getDatabaseManager().getVerificationCode(UUID.fromString(uuid));
+                        stats.put("verification_code", verificationCode);
+                    }
+
                     sendResponse(exchange, 200, gson.toJson(stats));
                 } catch (IllegalArgumentException e) {
                     sendResponse(exchange, 400, gson.toJson(Map.of("error", "Invalid UUID format")));
