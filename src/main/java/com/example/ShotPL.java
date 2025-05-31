@@ -6,14 +6,10 @@ import com.example.commands.VerifyCommand;
 import com.example.database.DatabaseManager;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import java.time.Duration;
 
-public class ShotPL extends JavaPlugin implements Listener {
+public class ShotPL extends JavaPlugin {
     private ServerAPI api;
     private DatabaseManager databaseManager;
     private long startTime;
@@ -60,33 +56,6 @@ public class ShotPL extends JavaPlugin implements Listener {
 
         // Log shutdown message
         getLogger().info("Plugin has been disabled!");
-    }
-
-    @EventHandler
-    public void onPlayerJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
-
-        // Record player login
-        databaseManager.recordPlayerLogin(player);
-
-        // Update player status on join
-        Bukkit.getScheduler().runTaskLater(this, () -> {
-            databaseManager.updatePlayerStatus(player);
-        }, 20L); // Delay by 1 second to ensure player is fully loaded
-
-        // Send welcome message if enabled
-        if (getConfig().getBoolean("welcome.enabled", true)) {
-            String message = getConfig().getString("welcome.message", "§b§lShot-PL §7» §fWelcome {player} to the server!")
-                    .replace("{player}", player.getName())
-                    .replace("{server}", Bukkit.getServer().getName());
-            player.sendMessage(message);
-        }
-    }
-
-    @EventHandler
-    public void onPlayerQuit(PlayerQuitEvent event) {
-        Player player = event.getPlayer();
-        databaseManager.recordPlayerLogout(player);
     }
 
     public DatabaseManager getDatabaseManager() {
