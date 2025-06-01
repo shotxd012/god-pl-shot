@@ -264,97 +264,119 @@ public class DatabaseManager {
         }
     }
 
+    private Connection getConnection() {
+        try {
+            if (connection == null || connection.isClosed()) {
+                Class.forName("org.sqlite.JDBC");
+                connection = DriverManager.getConnection("jdbc:sqlite:" + plugin.getDataFolder() + "/player_data.db");
+            }
+            return connection;
+        } catch (Exception e) {
+            plugin.getLogger().severe("Failed to get database connection: " + e.getMessage());
+            return null;
+        }
+    }
+
     public Map<String, Object> getPlayerStats(UUID playerUuid) {
         Map<String, Object> stats = new HashMap<>();
-        
-        // Get total playtime
-        String playtimeSql = "SELECT SUM(session_duration) as total_playtime, " +
-                           "MIN(login_time) as first_join " +
-                           "FROM player_sessions " +
-                           "WHERE player_uuid = ?";
-        try (PreparedStatement pstmt = connection.prepareStatement(playtimeSql)) {
-            pstmt.setString(1, playerUuid.toString());
-            ResultSet rs = pstmt.executeQuery();
-            if (rs.next()) {
-                stats.put("total_playtime", rs.getLong("total_playtime"));
-                stats.put("first_join", rs.getString("first_join"));
+        try (Connection conn = getConnection()) {
+            if (conn == null) return stats;
+
+            // Get player statistics
+            String sql = "SELECT * FROM player_statistics WHERE player_uuid = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setString(1, playerUuid.toString());
+                ResultSet rs = stmt.executeQuery();
+                
+                if (rs.next()) {
+                    Map<String, Object> statistics = new HashMap<>();
+                    statistics.put("blocks_broken", rs.getInt("blocks_broken"));
+                    statistics.put("blocks_placed", rs.getInt("blocks_placed"));
+                    statistics.put("deaths", rs.getInt("deaths"));
+                    statistics.put("player_kills", rs.getInt("player_kills"));
+                    statistics.put("mob_kills", rs.getInt("mob_kills"));
+                    statistics.put("jumps", rs.getInt("jumps"));
+                    statistics.put("distance_walked", rs.getInt("distance_walked"));
+                    statistics.put("distance_sprinted", rs.getInt("distance_sprinted"));
+                    statistics.put("distance_swum", rs.getInt("distance_swum"));
+                    statistics.put("distance_flown", rs.getInt("distance_flown"));
+                    statistics.put("total_distance", rs.getInt("total_distance"));
+                    statistics.put("damage_taken", rs.getInt("damage_taken"));
+                    statistics.put("damage_dealt", rs.getInt("damage_dealt"));
+                    statistics.put("fish_caught", rs.getInt("fish_caught"));
+                    statistics.put("animals_bred", rs.getInt("animals_bred"));
+                    statistics.put("items_crafted", rs.getInt("items_crafted"));
+                    statistics.put("items_dropped", rs.getInt("items_dropped"));
+                    statistics.put("food_eaten", rs.getInt("food_eaten"));
+                    statistics.put("time_played_ticks", rs.getInt("time_played_ticks"));
+                    statistics.put("time_played_hours", rs.getDouble("time_played_hours"));
+                    statistics.put("last_updated", rs.getTimestamp("last_updated"));
+                    stats.put("statistics", statistics);
+                }
+            }
+
+            // Get player login history
+            String loginHistorySql = "SELECT * FROM player_sessions WHERE player_uuid = ? ORDER BY login_time DESC LIMIT 3";
+            try (PreparedStatement stmt = conn.prepareStatement(loginHistorySql)) {
+                stmt.setString(1, playerUuid.toString());
+                ResultSet rs = stmt.executeQuery();
+                
+                List<Map<String, Object>> loginHistory = new ArrayList<>();
+                while (rs.next()) {
+                    Map<String, Object> login = new HashMap<>();
+                    login.put("login_time", rs.getTimestamp("login_time"));
+                    login.put("logout_time", rs.getTimestamp("logout_time"));
+                    login.put("session_duration", rs.getLong("session_duration"));
+                    loginHistory.add(login);
+                }
+                stats.put("login_history", loginHistory);
+            }
+
+            // Get player achievements
+            String achievementsSql = "SELECT achievement_id FROM player_achievements WHERE player_uuid = ? AND completed = 1";
+            try (PreparedStatement stmt = conn.prepareStatement(achievementsSql)) {
+                stmt.setString(1, playerUuid.toString());
+                ResultSet rs = stmt.executeQuery();
+                
+                List<String> achievements = new ArrayList<>();
+                while (rs.next()) {
+                    achievements.add(rs.getString("achievement_id"));
+                }
+                stats.put("achievements", achievements);
+            }
+
+            // Get player basic info
+            String playerSql = "SELECT * FROM players WHERE uuid = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(playerSql)) {
+                stmt.setString(1, playerUuid.toString());
+                ResultSet rs = stmt.executeQuery();
+                
+                if (rs.next()) {
+                    stats.put("first_join", rs.getTimestamp("first_join"));
+                    stats.put("last_online", rs.getTimestamp("last_online"));
+                    stats.put("total_playtime", rs.getLong("total_playtime"));
+                }
+            }
+
+            // Get verification status
+            String verificationSql = "SELECT is_verified, verification_code FROM player_verification WHERE player_uuid = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(verificationSql)) {
+                stmt.setString(1, playerUuid.toString());
+                ResultSet rs = stmt.executeQuery();
+                
+                if (rs.next()) {
+                    boolean isVerified = rs.getBoolean("is_verified");
+                    stats.put("is_verified", isVerified);
+                    if (!isVerified) {
+                        stats.put("verification_code", rs.getString("verification_code"));
+                    }
+                } else {
+                    stats.put("is_verified", false);
+                }
             }
         } catch (SQLException e) {
-            plugin.getLogger().severe("Failed to get player playtime: " + e.getMessage());
+            plugin.getLogger().severe("Error getting player stats: " + e.getMessage());
         }
-
-        // Get recent sessions
-        String sessionsSql = "SELECT login_time, logout_time, session_duration " +
-                           "FROM player_sessions " +
-                           "WHERE player_uuid = ? " +
-                           "ORDER BY login_time DESC LIMIT 3";
-        try (PreparedStatement pstmt = connection.prepareStatement(sessionsSql)) {
-            pstmt.setString(1, playerUuid.toString());
-            ResultSet rs = pstmt.executeQuery();
-            List<Map<String, Object>> sessions = new ArrayList<>();
-            while (rs.next()) {
-                Map<String, Object> session = new HashMap<>();
-                session.put("login_time", rs.getString("login_time"));
-                session.put("logout_time", rs.getString("logout_time"));
-                session.put("session_duration", rs.getLong("session_duration"));
-                sessions.add(session);
-            }
-            stats.put("login_history", sessions);
-        } catch (SQLException e) {
-            plugin.getLogger().severe("Failed to get player sessions: " + e.getMessage());
-        }
-
-        // Get achievements
-        String achievementsSql = "SELECT achievement_id, progress, completed, completed_at " +
-                               "FROM player_achievements " +
-                               "WHERE player_uuid = ?";
-        try (PreparedStatement pstmt = connection.prepareStatement(achievementsSql)) {
-            pstmt.setString(1, playerUuid.toString());
-            ResultSet rs = pstmt.executeQuery();
-            List<Map<String, Object>> achievements = new ArrayList<>();
-            while (rs.next()) {
-                Map<String, Object> achievement = new HashMap<>();
-                achievement.put("id", rs.getString("achievement_id"));
-                achievement.put("progress", rs.getInt("progress"));
-                achievement.put("completed", rs.getBoolean("completed"));
-                achievement.put("completed_at", rs.getString("completed_at"));
-                achievements.add(achievement);
-            }
-            stats.put("achievements", achievements);
-        } catch (SQLException e) {
-            plugin.getLogger().severe("Failed to get player achievements: " + e.getMessage());
-        }
-
-        // Get player statistics
-        String statisticsSql = "SELECT * FROM player_statistics WHERE player_uuid = ?";
-        try (PreparedStatement pstmt = connection.prepareStatement(statisticsSql)) {
-            pstmt.setString(1, playerUuid.toString());
-            ResultSet rs = pstmt.executeQuery();
-            if (rs.next()) {
-                Map<String, Object> statistics = new HashMap<>();
-                statistics.put("blocks_broken", rs.getInt("blocks_broken"));
-                statistics.put("blocks_placed", rs.getInt("blocks_placed"));
-                statistics.put("deaths", rs.getInt("deaths"));
-                statistics.put("kills", rs.getInt("player_kills"));
-                statistics.put("distance_walked", rs.getInt("distance_walked"));
-                statistics.put("distance_sprinted", rs.getInt("distance_sprinted"));
-                statistics.put("distance_swum", rs.getInt("distance_swum"));
-                statistics.put("distance_flown", rs.getInt("distance_flown"));
-                statistics.put("jumps", rs.getInt("jumps"));
-                statistics.put("food_eaten", rs.getInt("food_eaten"));
-                statistics.put("damage_taken", rs.getInt("damage_taken"));
-                statistics.put("damage_dealt", rs.getInt("damage_dealt"));
-                statistics.put("fish_caught", rs.getInt("fish_caught"));
-                statistics.put("items_crafted", rs.getInt("items_crafted"));
-                statistics.put("mobs_killed", rs.getInt("mob_kills"));
-                statistics.put("total_distance", rs.getInt("total_distance"));
-                statistics.put("last_updated", rs.getString("last_updated"));
-                stats.put("statistics", statistics);
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("Failed to get player statistics: " + e.getMessage());
-        }
-
         return stats;
     }
 
@@ -608,87 +630,5 @@ public class DatabaseManager {
         } catch (SQLException e) {
             plugin.getLogger().severe("Error updating player stats: " + e.getMessage());
         }
-    }
-
-    public Map<String, Object> getPlayerStats(UUID playerUuid) {
-        Map<String, Object> stats = new HashMap<>();
-        try (Connection conn = getConnection()) {
-            // Get player statistics
-            String sql = "SELECT * FROM player_stats WHERE player_uuid = ?";
-            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-                stmt.setString(1, playerUuid.toString());
-                ResultSet rs = stmt.executeQuery();
-                
-                if (rs.next()) {
-                    stats.put("blocks_broken", rs.getInt("blocks_broken"));
-                    stats.put("blocks_placed", rs.getInt("blocks_placed"));
-                    stats.put("deaths", rs.getInt("deaths"));
-                    stats.put("player_kills", rs.getInt("player_kills"));
-                    stats.put("mob_kills", rs.getInt("mob_kills"));
-                    stats.put("jumps", rs.getInt("jumps"));
-                    stats.put("distance_walked", rs.getInt("distance_walked"));
-                    stats.put("distance_sprinted", rs.getInt("distance_sprinted"));
-                    stats.put("distance_swum", rs.getInt("distance_swum"));
-                    stats.put("distance_flown", rs.getInt("distance_flown"));
-                    stats.put("total_distance", rs.getInt("total_distance"));
-                    stats.put("damage_taken", rs.getInt("damage_taken"));
-                    stats.put("damage_dealt", rs.getInt("damage_dealt"));
-                    stats.put("fish_caught", rs.getInt("fish_caught"));
-                    stats.put("animals_bred", rs.getInt("animals_bred"));
-                    stats.put("items_crafted", rs.getInt("items_crafted"));
-                    stats.put("items_dropped", rs.getInt("items_dropped"));
-                    stats.put("food_eaten", rs.getInt("food_eaten"));
-                    stats.put("time_played_ticks", rs.getInt("time_played_ticks"));
-                    stats.put("time_played_hours", rs.getDouble("time_played_hours"));
-                    stats.put("last_updated", rs.getTimestamp("last_updated"));
-                }
-            }
-
-            // Get player login history
-            String loginHistorySql = "SELECT * FROM player_login_history WHERE player_uuid = ? ORDER BY login_time DESC";
-            try (PreparedStatement stmt = conn.prepareStatement(loginHistorySql)) {
-                stmt.setString(1, playerUuid.toString());
-                ResultSet rs = stmt.executeQuery();
-                
-                List<Map<String, Object>> loginHistory = new ArrayList<>();
-                while (rs.next()) {
-                    Map<String, Object> login = new HashMap<>();
-                    login.put("login_time", rs.getTimestamp("login_time"));
-                    login.put("logout_time", rs.getTimestamp("logout_time"));
-                    login.put("session_duration", rs.getLong("session_duration"));
-                    loginHistory.add(login);
-                }
-                stats.put("login_history", loginHistory);
-            }
-
-            // Get player achievements
-            String achievementsSql = "SELECT * FROM player_achievements WHERE player_uuid = ?";
-            try (PreparedStatement stmt = conn.prepareStatement(achievementsSql)) {
-                stmt.setString(1, playerUuid.toString());
-                ResultSet rs = stmt.executeQuery();
-                
-                List<String> achievements = new ArrayList<>();
-                while (rs.next()) {
-                    achievements.add(rs.getString("achievement"));
-                }
-                stats.put("achievements", achievements);
-            }
-
-            // Get player basic info
-            String playerSql = "SELECT * FROM players WHERE uuid = ?";
-            try (PreparedStatement stmt = conn.prepareStatement(playerSql)) {
-                stmt.setString(1, playerUuid.toString());
-                ResultSet rs = stmt.executeQuery();
-                
-                if (rs.next()) {
-                    stats.put("first_join", rs.getTimestamp("first_join"));
-                    stats.put("last_online", rs.getTimestamp("last_online"));
-                    stats.put("total_playtime", rs.getLong("total_playtime"));
-                }
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("Error getting player stats: " + e.getMessage());
-        }
-        return stats;
     }
 }
