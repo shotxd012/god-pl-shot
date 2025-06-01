@@ -117,32 +117,48 @@ public class DatabaseManager {
     }
 
     public void recordPlayerLogin(Player player) {
-        String sql = "INSERT INTO player_sessions (player_uuid, player_name) VALUES (?, ?)";
-        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
-            pstmt.setString(1, player.getUniqueId().toString());
-            pstmt.setString(2, player.getName());
-            pstmt.executeUpdate();
+        try (Connection conn = getConnection()) {
+            if (conn == null) return;
+
+            String sql = "INSERT INTO player_sessions (player_uuid, player_name) VALUES (?, ?)";
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, player.getUniqueId().toString());
+                pstmt.setString(2, player.getName());
+                pstmt.executeUpdate();
+            }
+
+            // Update or insert player in players table
+            String playerSql = "INSERT OR REPLACE INTO players (uuid, name, last_online) VALUES (?, ?, CURRENT_TIMESTAMP)";
+            try (PreparedStatement pstmt = conn.prepareStatement(playerSql)) {
+                pstmt.setString(1, player.getUniqueId().toString());
+                pstmt.setString(2, player.getName());
+                pstmt.executeUpdate();
+            }
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to record player login: " + e.getMessage());
         }
     }
 
     public void recordPlayerLogout(Player player) {
-        String sql = "UPDATE player_sessions SET logout_time = CURRENT_TIMESTAMP, " +
-                    "session_duration = (strftime('%s', CURRENT_TIMESTAMP) - strftime('%s', login_time)) * 1000 " +
-                    "WHERE player_uuid = ? AND logout_time IS NULL " +
-                    "AND id = (SELECT id FROM player_sessions WHERE player_uuid = ? AND logout_time IS NULL ORDER BY login_time DESC LIMIT 1)";
-        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
-            pstmt.setString(1, player.getUniqueId().toString());
-            pstmt.setString(2, player.getUniqueId().toString());
-            pstmt.executeUpdate();
+        try (Connection conn = getConnection()) {
+            if (conn == null) return;
+
+            String sql = "UPDATE player_sessions SET logout_time = CURRENT_TIMESTAMP, " +
+                        "session_duration = (strftime('%s', CURRENT_TIMESTAMP) - strftime('%s', login_time)) * 1000 " +
+                        "WHERE player_uuid = ? AND logout_time IS NULL " +
+                        "AND id = (SELECT id FROM player_sessions WHERE player_uuid = ? AND logout_time IS NULL ORDER BY login_time DESC LIMIT 1)";
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, player.getUniqueId().toString());
+                pstmt.setString(2, player.getUniqueId().toString());
+                pstmt.executeUpdate();
+            }
+            
+            // Update player statistics and status when they logout
+            updatePlayerStatistics(player);
+            updatePlayerStatus(player);
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to record player logout: " + e.getMessage());
         }
-        
-        // Update player statistics and status when they logout
-        updatePlayerStatistics(player);
-        updatePlayerStatus(player);
     }
 
     public void updatePlayerStatus(Player player) {
@@ -544,12 +560,16 @@ public class DatabaseManager {
     }
 
     public String getVerificationCode(UUID playerUuid) {
-        try (PreparedStatement stmt = connection.prepareStatement(
-                "SELECT verification_code FROM player_verification WHERE player_uuid = ?")) {
-            stmt.setString(1, playerUuid.toString());
-            ResultSet rs = stmt.executeQuery();
-            if (rs.next()) {
-                return rs.getString("verification_code");
+        try (Connection conn = getConnection()) {
+            if (conn == null) return null;
+
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "SELECT verification_code FROM player_verification WHERE player_uuid = ?")) {
+                stmt.setString(1, playerUuid.toString());
+                ResultSet rs = stmt.executeQuery();
+                if (rs.next()) {
+                    return rs.getString("verification_code");
+                }
             }
         } catch (SQLException e) {
             plugin.getLogger().warning("Error getting verification code for player " + playerUuid + ": " + e.getMessage());
@@ -558,12 +578,16 @@ public class DatabaseManager {
     }
 
     public boolean isPlayerVerified(UUID playerUuid) {
-        try (PreparedStatement stmt = connection.prepareStatement(
-                "SELECT is_verified FROM player_verification WHERE player_uuid = ?")) {
-            stmt.setString(1, playerUuid.toString());
-            ResultSet rs = stmt.executeQuery();
-            if (rs.next()) {
-                return rs.getBoolean("is_verified");
+        try (Connection conn = getConnection()) {
+            if (conn == null) return false;
+
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "SELECT is_verified FROM player_verification WHERE player_uuid = ?")) {
+                stmt.setString(1, playerUuid.toString());
+                ResultSet rs = stmt.executeQuery();
+                if (rs.next()) {
+                    return rs.getBoolean("is_verified");
+                }
             }
         } catch (SQLException e) {
             plugin.getLogger().warning("Error checking verification status for player " + playerUuid + ": " + e.getMessage());
@@ -572,22 +596,30 @@ public class DatabaseManager {
     }
 
     public void saveVerificationCode(UUID playerUuid, String code) {
-        try (PreparedStatement stmt = connection.prepareStatement(
-                "INSERT OR REPLACE INTO player_verification (player_uuid, verification_code, is_verified, created_at) VALUES (?, ?, false, CURRENT_TIMESTAMP)")) {
-            stmt.setString(1, playerUuid.toString());
-            stmt.setString(2, code);
-            stmt.executeUpdate();
+        try (Connection conn = getConnection()) {
+            if (conn == null) return;
+
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "INSERT OR REPLACE INTO player_verification (player_uuid, verification_code, is_verified, created_at) VALUES (?, ?, false, CURRENT_TIMESTAMP)")) {
+                stmt.setString(1, playerUuid.toString());
+                stmt.setString(2, code);
+                stmt.executeUpdate();
+            }
         } catch (SQLException e) {
             plugin.getLogger().warning("Error saving verification code for player " + playerUuid + ": " + e.getMessage());
         }
     }
 
     public void setPlayerVerified(UUID playerUuid, boolean verified) {
-        try (PreparedStatement stmt = connection.prepareStatement(
-                "UPDATE player_verification SET is_verified = ?, verified_at = CURRENT_TIMESTAMP WHERE player_uuid = ?")) {
-            stmt.setBoolean(1, verified);
-            stmt.setString(2, playerUuid.toString());
-            stmt.executeUpdate();
+        try (Connection conn = getConnection()) {
+            if (conn == null) return;
+
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "UPDATE player_verification SET is_verified = ?, verified_at = CURRENT_TIMESTAMP WHERE player_uuid = ?")) {
+                stmt.setBoolean(1, verified);
+                stmt.setString(2, playerUuid.toString());
+                stmt.executeUpdate();
+            }
         } catch (SQLException e) {
             plugin.getLogger().warning("Error updating verification status for player " + playerUuid + ": " + e.getMessage());
         }
