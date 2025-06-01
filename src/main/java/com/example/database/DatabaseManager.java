@@ -61,8 +61,9 @@ public class DatabaseManager {
                     "UNIQUE(player_uuid, achievement_id)" +
                     ")");
 
-                // Player statistics table
-                stmt.execute("CREATE TABLE IF NOT EXISTS player_statistics (" +
+                // Drop and recreate player_statistics table to ensure correct schema
+                stmt.execute("DROP TABLE IF EXISTS player_statistics");
+                stmt.execute("CREATE TABLE player_statistics (" +
                     "player_uuid TEXT PRIMARY KEY," +
                     "blocks_broken INTEGER DEFAULT 0," +
                     "blocks_placed INTEGER DEFAULT 0," +
@@ -312,7 +313,7 @@ public class DatabaseManager {
                     statistics.put("blocks_broken", rs.getInt("blocks_broken"));
                     statistics.put("blocks_placed", rs.getInt("blocks_placed"));
                     statistics.put("deaths", rs.getInt("deaths"));
-                    statistics.put("player_kills", rs.getInt("kills"));
+                    statistics.put("kills", rs.getInt("kills"));
                     statistics.put("mob_kills", rs.getInt("mob_kills"));
                     statistics.put("jumps", rs.getInt("jumps"));
                     statistics.put("distance_walked", rs.getInt("distance_walked"));
@@ -594,9 +595,10 @@ public class DatabaseManager {
 
     public void updatePlayerStats(UUID playerUuid, Map<String, Object> stats) {
         try (Connection conn = getConnection()) {
-            // Update player statistics
+            if (conn == null) return;
+
             String sql = "INSERT OR REPLACE INTO player_statistics (" +
-                        "player_uuid, blocks_broken, blocks_placed, deaths, player_kills, " +
+                        "player_uuid, blocks_broken, blocks_placed, deaths, kills, " +
                         "mob_kills, jumps, distance_walked, distance_sprinted, distance_swum, " +
                         "distance_flown, total_distance, damage_taken, damage_dealt, fish_caught, " +
                         "animals_bred, items_crafted, items_dropped, food_eaten, time_played_ticks, " +
@@ -608,7 +610,7 @@ public class DatabaseManager {
                 stmt.setInt(2, (int) stats.getOrDefault("blocks_broken", 0));
                 stmt.setInt(3, (int) stats.getOrDefault("blocks_placed", 0));
                 stmt.setInt(4, (int) stats.getOrDefault("deaths", 0));
-                stmt.setInt(5, (int) stats.getOrDefault("player_kills", 0));
+                stmt.setInt(5, (int) stats.getOrDefault("kills", 0));
                 stmt.setInt(6, (int) stats.getOrDefault("mob_kills", 0));
                 stmt.setInt(7, (int) stats.getOrDefault("jumps", 0));
                 stmt.setInt(8, (int) stats.getOrDefault("distance_walked", 0));
@@ -625,37 +627,6 @@ public class DatabaseManager {
                 stmt.setInt(19, (int) stats.getOrDefault("food_eaten", 0));
                 stmt.setInt(20, (int) stats.getOrDefault("time_played_ticks", 0));
                 stmt.setDouble(21, (double) stats.getOrDefault("time_played_hours", 0.0));
-                
-                stmt.executeUpdate();
-            }
-
-            // Update player status
-            String statusSql = "INSERT OR REPLACE INTO player_status (" +
-                             "player_uuid, player_name, health, max_health, food_level, " +
-                             "saturation, game_mode, level, exp, total_experience, " +
-                             "location_x, location_y, location_z, world_name, ping, last_updated) " +
-                             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
-
-            try (PreparedStatement stmt = conn.prepareStatement(statusSql)) {
-                stmt.setString(1, playerUuid.toString());
-                stmt.setString(2, (String) stats.getOrDefault("name", ""));
-                stmt.setDouble(3, (double) stats.getOrDefault("health", 20.0));
-                stmt.setDouble(4, (double) stats.getOrDefault("max_health", 20.0));
-                stmt.setInt(5, (int) stats.getOrDefault("food_level", 20));
-                stmt.setDouble(6, (double) stats.getOrDefault("saturation", 5.0));
-                stmt.setString(7, (String) stats.getOrDefault("game_mode", "SURVIVAL"));
-                stmt.setInt(8, (int) stats.getOrDefault("level", 0));
-                stmt.setDouble(9, (double) stats.getOrDefault("exp", 0.0));
-                stmt.setInt(10, (int) stats.getOrDefault("total_experience", 0));
-                
-                // Handle location
-                List<Double> location = (List<Double>) stats.getOrDefault("location", Arrays.asList(0.0, 64.0, 0.0));
-                stmt.setDouble(11, location.get(0));
-                stmt.setDouble(12, location.get(1));
-                stmt.setDouble(13, location.get(2));
-                
-                stmt.setString(14, (String) stats.getOrDefault("world", "world"));
-                stmt.setInt(15, (int) stats.getOrDefault("ping", 0));
                 
                 stmt.executeUpdate();
             }
