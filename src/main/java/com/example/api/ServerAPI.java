@@ -26,6 +26,8 @@ import org.bukkit.entity.EntityType;
 import java.util.logging.Level;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
+import java.io.ByteArrayOutputStream;
+import java.util.zip.GZIPOutputStream;
 
 public class ServerAPI {
     private final ShotPL plugin;
@@ -265,7 +267,9 @@ public class ServerAPI {
                     response.put("success", true);
                     response.put("data", stats);
                     
-                    sendResponse(exchange, 200, gson.toJson(response));
+                    // Use ObjectMapper for better JSON handling
+                    String jsonResponse = new ObjectMapper().writeValueAsString(response);
+                    sendResponse(exchange, 200, jsonResponse);
                 } catch (IllegalArgumentException e) {
                     sendResponse(exchange, 400, gson.toJson(Map.of("error", "Invalid UUID format")));
                 } catch (Exception e) {
@@ -320,10 +324,38 @@ public class ServerAPI {
     }
 
     private void sendResponse(HttpExchange exchange, int statusCode, String response) throws IOException {
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
-        exchange.sendResponseHeaders(statusCode, response.length());
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(response.getBytes());
+        try {
+            // Set headers
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.getResponseHeaders().set("Content-Encoding", "gzip");
+            
+            // Compress the response
+            byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            try (GZIPOutputStream gzipOut = new GZIPOutputStream(baos)) {
+                gzipOut.write(responseBytes);
+            }
+            byte[] compressedBytes = baos.toByteArray();
+            
+            // Send response with compressed data
+            exchange.sendResponseHeaders(statusCode, compressedBytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(compressedBytes);
+            }
+        } catch (Exception e) {
+            plugin.getLogger().severe("Error sending response: " + e.getMessage());
+            // If compression fails, try sending uncompressed
+            try {
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(statusCode, responseBytes.length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(responseBytes);
+                }
+            } catch (Exception ex) {
+                plugin.getLogger().severe("Failed to send uncompressed response: " + ex.getMessage());
+                throw ex;
+            }
         }
     }
 
@@ -486,7 +518,9 @@ public class ServerAPI {
                 response.put("success", true);
                 response.put("data", stats);
                 
-                sendResponse(exchange, 200, gson.toJson(response));
+                // Use ObjectMapper for better JSON handling
+                String jsonResponse = new ObjectMapper().writeValueAsString(response);
+                sendResponse(exchange, 200, jsonResponse);
             } catch (IllegalArgumentException e) {
                 sendResponse(exchange, 400, gson.toJson(Map.of("error", "Invalid UUID format")));
             } catch (Exception e) {
@@ -510,7 +544,9 @@ public class ServerAPI {
                 response.put("success", true);
                 response.put("data", players);
                 
-                sendResponse(exchange, 200, gson.toJson(response));
+                // Use ObjectMapper for better JSON handling
+                String jsonResponse = new ObjectMapper().writeValueAsString(response);
+                sendResponse(exchange, 200, jsonResponse);
             } catch (Exception e) {
                 plugin.getLogger().severe("Error getting all players: " + e.getMessage());
                 sendResponse(exchange, 500, gson.toJson(Map.of("error", "Internal server error")));
