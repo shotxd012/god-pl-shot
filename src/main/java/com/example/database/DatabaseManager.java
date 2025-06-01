@@ -67,7 +67,7 @@ public class DatabaseManager {
                     "blocks_broken INTEGER DEFAULT 0," +
                     "blocks_placed INTEGER DEFAULT 0," +
                     "deaths INTEGER DEFAULT 0," +
-                    "player_kills INTEGER DEFAULT 0," +
+                    "kills INTEGER DEFAULT 0," +
                     "mob_kills INTEGER DEFAULT 0," +
                     "jumps INTEGER DEFAULT 0," +
                     "distance_walked INTEGER DEFAULT 0," +
@@ -106,6 +106,9 @@ public class DatabaseManager {
                     "ping INTEGER DEFAULT 0," +
                     "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
                     ")");
+
+                // Enable foreign keys
+                stmt.execute("PRAGMA foreign_keys = ON");
             }
         } catch (Exception e) {
             plugin.getLogger().severe("Failed to initialize database: " + e.getMessage());
@@ -309,7 +312,7 @@ public class DatabaseManager {
                     statistics.put("blocks_broken", rs.getInt("blocks_broken"));
                     statistics.put("blocks_placed", rs.getInt("blocks_placed"));
                     statistics.put("deaths", rs.getInt("deaths"));
-                    statistics.put("player_kills", rs.getInt("player_kills"));
+                    statistics.put("player_kills", rs.getInt("kills"));
                     statistics.put("mob_kills", rs.getInt("mob_kills"));
                     statistics.put("jumps", rs.getInt("jumps"));
                     statistics.put("distance_walked", rs.getInt("distance_walked"));
@@ -512,12 +515,16 @@ public class DatabaseManager {
     }
 
     public UUID getPlayerUuidByName(String playerName) {
-        String sql = "SELECT player_uuid FROM player_sessions WHERE player_name = ? ORDER BY login_time DESC LIMIT 1";
-        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
-            pstmt.setString(1, playerName);
-            ResultSet rs = pstmt.executeQuery();
-            if (rs.next()) {
-                return UUID.fromString(rs.getString("player_uuid"));
+        try (Connection conn = getConnection()) {
+            if (conn == null) return null;
+
+            String sql = "SELECT uuid FROM players WHERE name = ? ORDER BY last_online DESC LIMIT 1";
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, playerName);
+                ResultSet rs = pstmt.executeQuery();
+                if (rs.next()) {
+                    return UUID.fromString(rs.getString("uuid"));
+                }
             }
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to get player UUID by name: " + e.getMessage());
