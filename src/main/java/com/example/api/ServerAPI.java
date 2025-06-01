@@ -24,6 +24,8 @@ import java.util.Arrays;
 import java.util.List;
 import org.bukkit.entity.EntityType;
 import java.util.logging.Level;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
 
 public class ServerAPI {
     private final ShotPL plugin;
@@ -506,5 +508,92 @@ public class ServerAPI {
 
         return String.format("%dd %dh %dm %ds", 
             days, hours % 24, minutes % 60, seconds % 60);
+    }
+
+    private void setupRoutes() {
+        // Player stats endpoint
+        server.get("/api/player/stats/:uuid", ctx -> {
+            String uuid = ctx.pathParam("uuid");
+            try {
+                Map<String, Object> stats = plugin.getDatabaseManager().getPlayerStats(UUID.fromString(uuid));
+                if (stats.isEmpty()) {
+                    ctx.status(404).json(Map.of("error", "Player not found"));
+                    return;
+                }
+                
+                // Ensure all required fields are present
+                stats.putIfAbsent("statistics", new HashMap<>());
+                stats.putIfAbsent("login_history", new ArrayList<>());
+                stats.putIfAbsent("achievements", new ArrayList<>());
+                stats.putIfAbsent("is_verified", false);
+                
+                // Format the response
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", true);
+                response.put("data", stats);
+                
+                // Set content type and length
+                ctx.contentType("application/json");
+                String jsonResponse = new ObjectMapper().writeValueAsString(response);
+                ctx.header("Content-Length", String.valueOf(jsonResponse.getBytes(StandardCharsets.UTF_8).length));
+                ctx.result(jsonResponse);
+            } catch (IllegalArgumentException e) {
+                ctx.status(400).json(Map.of("error", "Invalid UUID format"));
+            } catch (Exception e) {
+                plugin.getLogger().severe("Error getting player stats: " + e.getMessage());
+                ctx.status(500).json(Map.of("error", "Internal server error"));
+            }
+        });
+
+        // All players endpoint
+        server.get("/api/players", ctx -> {
+            try {
+                List<Map<String, Object>> players = plugin.getDatabaseManager().getAllPlayersData();
+                
+                // Format the response
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", true);
+                response.put("data", players);
+                
+                // Set content type and length
+                ctx.contentType("application/json");
+                String jsonResponse = new ObjectMapper().writeValueAsString(response);
+                ctx.header("Content-Length", String.valueOf(jsonResponse.getBytes(StandardCharsets.UTF_8).length));
+                ctx.result(jsonResponse);
+            } catch (Exception e) {
+                plugin.getLogger().severe("Error getting all players: " + e.getMessage());
+                ctx.status(500).json(Map.of("error", "Internal server error"));
+            }
+        });
+
+        // Player verification endpoint
+        server.post("/api/player/verify", ctx -> {
+            try {
+                Map<String, String> body = new ObjectMapper().readValue(ctx.body(), Map.class);
+                String uuid = body.get("uuid");
+                String code = body.get("code");
+
+                if (uuid == null || code == null) {
+                    ctx.status(400).json(Map.of("error", "Missing required fields"));
+                    return;
+                }
+
+                boolean isValid = plugin.getDatabaseManager().verifyPlayer(UUID.fromString(uuid), code);
+                
+                // Format the response
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", isValid);
+                response.put("message", isValid ? "Verification successful" : "Invalid verification code");
+                
+                // Set content type and length
+                ctx.contentType("application/json");
+                String jsonResponse = new ObjectMapper().writeValueAsString(response);
+                ctx.header("Content-Length", String.valueOf(jsonResponse.getBytes(StandardCharsets.UTF_8).length));
+                ctx.result(jsonResponse);
+            } catch (Exception e) {
+                plugin.getLogger().severe("Error verifying player: " + e.getMessage());
+                ctx.status(500).json(Map.of("error", "Internal server error"));
+            }
+        });
     }
 }
