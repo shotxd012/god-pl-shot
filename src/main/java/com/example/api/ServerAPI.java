@@ -256,8 +256,68 @@ public class ServerAPI {
                         return;
                     }
                     
-                    // Ensure all required fields are present
-                    stats.putIfAbsent("statistics", new HashMap<>());
+                    // Format dates
+                    if (stats.containsKey("first_join")) {
+                        Timestamp firstJoin = (Timestamp) stats.get("first_join");
+                        stats.put("first_join", firstJoin != null ? firstJoin.toString() : null);
+                    }
+                    if (stats.containsKey("last_online")) {
+                        Timestamp lastOnline = (Timestamp) stats.get("last_online");
+                        stats.put("last_online", lastOnline != null ? lastOnline.toString() : null);
+                    }
+
+                    // Format login history dates
+                    if (stats.containsKey("login_history")) {
+                        List<Map<String, Object>> loginHistory = (List<Map<String, Object>>) stats.get("login_history");
+                        for (Map<String, Object> login : loginHistory) {
+                            if (login.containsKey("login_time")) {
+                                Timestamp loginTime = (Timestamp) login.get("login_time");
+                                login.put("login_time", loginTime != null ? loginTime.toString() : null);
+                            }
+                            if (login.containsKey("logout_time")) {
+                                Timestamp logoutTime = (Timestamp) login.get("logout_time");
+                                login.put("logout_time", logoutTime != null ? logoutTime.toString() : null);
+                            }
+                        }
+                    }
+
+                    // Calculate total playtime from sessions
+                    long totalPlaytime = 0;
+                    if (stats.containsKey("login_history")) {
+                        List<Map<String, Object>> loginHistory = (List<Map<String, Object>>) stats.get("login_history");
+                        for (Map<String, Object> login : loginHistory) {
+                            if (login.containsKey("session_duration")) {
+                                totalPlaytime += ((Number) login.get("session_duration")).longValue();
+                            }
+                        }
+                    }
+                    stats.put("total_playtime", totalPlaytime);
+
+                    // Ensure all required fields are present with default values
+                    Map<String, Object> statistics = (Map<String, Object>) stats.getOrDefault("statistics", new HashMap<>());
+                    statistics.putIfAbsent("blocks_broken", 0);
+                    statistics.putIfAbsent("blocks_placed", 0);
+                    statistics.putIfAbsent("deaths", 0);
+                    statistics.putIfAbsent("kills", 0);
+                    statistics.putIfAbsent("mob_kills", 0);
+                    statistics.putIfAbsent("jumps", 0);
+                    statistics.putIfAbsent("distance_walked", 0);
+                    statistics.putIfAbsent("distance_sprinted", 0);
+                    statistics.putIfAbsent("distance_swum", 0);
+                    statistics.putIfAbsent("distance_flown", 0);
+                    statistics.putIfAbsent("total_distance", 0);
+                    statistics.putIfAbsent("damage_taken", 0);
+                    statistics.putIfAbsent("damage_dealt", 0);
+                    statistics.putIfAbsent("fish_caught", 0);
+                    statistics.putIfAbsent("animals_bred", 0);
+                    statistics.putIfAbsent("items_crafted", 0);
+                    statistics.putIfAbsent("items_dropped", 0);
+                    statistics.putIfAbsent("food_eaten", 0);
+                    statistics.putIfAbsent("time_played_ticks", 0);
+                    statistics.putIfAbsent("time_played_hours", 0.0);
+                    statistics.putIfAbsent("last_updated", new Timestamp(System.currentTimeMillis()).toString());
+                    stats.put("statistics", statistics);
+
                     stats.putIfAbsent("login_history", new ArrayList<>());
                     stats.putIfAbsent("achievements", new ArrayList<>());
                     stats.putIfAbsent("is_verified", false);
@@ -507,8 +567,68 @@ public class ServerAPI {
                     return;
                 }
                 
-                // Ensure all required fields are present
-                stats.putIfAbsent("statistics", new HashMap<>());
+                // Format dates
+                if (stats.containsKey("first_join")) {
+                    Timestamp firstJoin = (Timestamp) stats.get("first_join");
+                    stats.put("first_join", firstJoin != null ? firstJoin.toString() : null);
+                }
+                if (stats.containsKey("last_online")) {
+                    Timestamp lastOnline = (Timestamp) stats.get("last_online");
+                    stats.put("last_online", lastOnline != null ? lastOnline.toString() : null);
+                }
+
+                // Format login history dates
+                if (stats.containsKey("login_history")) {
+                    List<Map<String, Object>> loginHistory = (List<Map<String, Object>>) stats.get("login_history");
+                    for (Map<String, Object> login : loginHistory) {
+                        if (login.containsKey("login_time")) {
+                            Timestamp loginTime = (Timestamp) login.get("login_time");
+                            login.put("login_time", loginTime != null ? loginTime.toString() : null);
+                        }
+                        if (login.containsKey("logout_time")) {
+                            Timestamp logoutTime = (Timestamp) login.get("logout_time");
+                            login.put("logout_time", logoutTime != null ? logoutTime.toString() : null);
+                        }
+                    }
+                }
+
+                // Calculate total playtime from sessions
+                long totalPlaytime = 0;
+                if (stats.containsKey("login_history")) {
+                    List<Map<String, Object>> loginHistory = (List<Map<String, Object>>) stats.get("login_history");
+                    for (Map<String, Object> login : loginHistory) {
+                        if (login.containsKey("session_duration")) {
+                            totalPlaytime += ((Number) login.get("session_duration")).longValue();
+                        }
+                    }
+                }
+                stats.put("total_playtime", totalPlaytime);
+
+                // Ensure all required fields are present with default values
+                Map<String, Object> statistics = (Map<String, Object>) stats.getOrDefault("statistics", new HashMap<>());
+                statistics.putIfAbsent("blocks_broken", 0);
+                statistics.putIfAbsent("blocks_placed", 0);
+                statistics.putIfAbsent("deaths", 0);
+                statistics.putIfAbsent("kills", 0);
+                statistics.putIfAbsent("mob_kills", 0);
+                statistics.putIfAbsent("jumps", 0);
+                statistics.putIfAbsent("distance_walked", 0);
+                statistics.putIfAbsent("distance_sprinted", 0);
+                statistics.putIfAbsent("distance_swum", 0);
+                statistics.putIfAbsent("distance_flown", 0);
+                statistics.putIfAbsent("total_distance", 0);
+                statistics.putIfAbsent("damage_taken", 0);
+                statistics.putIfAbsent("damage_dealt", 0);
+                statistics.putIfAbsent("fish_caught", 0);
+                statistics.putIfAbsent("animals_bred", 0);
+                statistics.putIfAbsent("items_crafted", 0);
+                statistics.putIfAbsent("items_dropped", 0);
+                statistics.putIfAbsent("food_eaten", 0);
+                statistics.putIfAbsent("time_played_ticks", 0);
+                statistics.putIfAbsent("time_played_hours", 0.0);
+                statistics.putIfAbsent("last_updated", new Timestamp(System.currentTimeMillis()).toString());
+                stats.put("statistics", statistics);
+
                 stats.putIfAbsent("login_history", new ArrayList<>());
                 stats.putIfAbsent("achievements", new ArrayList<>());
                 stats.putIfAbsent("is_verified", false);
