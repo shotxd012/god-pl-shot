@@ -85,7 +85,8 @@ public class DatabaseManager {
                     "food_eaten INTEGER DEFAULT 0," +
                     "time_played_ticks INTEGER DEFAULT 0," +
                     "time_played_hours REAL DEFAULT 0.0," +
-                    "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
+                    "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                    "FOREIGN KEY(player_uuid) REFERENCES players(uuid)" +
                     ")");
 
                 // Player status table for storing last known player state
@@ -203,39 +204,66 @@ public class DatabaseManager {
     }
 
     public void updatePlayerStatistics(Player player) {
-        String sql = "INSERT OR REPLACE INTO player_statistics (" +
-                    "player_uuid, blocks_broken, blocks_placed, deaths, kills, " +
-                    "distance_walked, distance_sprinted, distance_swum, distance_flown, " +
-                    "jumps, food_eaten, damage_taken, damage_dealt, fish_caught, " +
-                    "items_crafted, mobs_killed, last_updated) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
+        try (Connection conn = getConnection()) {
+            if (conn == null) return;
+
+            String sql = "INSERT OR REPLACE INTO player_statistics (" +
+                        "player_uuid, blocks_broken, blocks_placed, deaths, kills, " +
+                        "mob_kills, jumps, distance_walked, distance_sprinted, distance_swum, " +
+                        "distance_flown, total_distance, damage_taken, damage_dealt, fish_caught, " +
+                        "animals_bred, items_crafted, items_dropped, food_eaten, time_played_ticks, " +
+                        "time_played_hours, last_updated) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
         
-        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
-            pstmt.setString(1, player.getUniqueId().toString());
-            
-            // Block statistics
-            pstmt.setInt(2, getSafeStat(player, org.bukkit.Statistic.MINE_BLOCK));
-            pstmt.setInt(3, getSafeStatTotal(player, org.bukkit.Statistic.USE_ITEM));
-            
-            // Combat statistics
-            pstmt.setInt(4, getSafeStat(player, org.bukkit.Statistic.DEATHS));
-            pstmt.setInt(5, getSafeStat(player, org.bukkit.Statistic.PLAYER_KILLS));
-            
-            // Movement statistics
-            pstmt.setInt(6, getSafeStat(player, org.bukkit.Statistic.WALK_ONE_CM));
-            pstmt.setInt(7, getSafeStat(player, org.bukkit.Statistic.SPRINT_ONE_CM));
-            pstmt.setInt(8, getSafeStat(player, org.bukkit.Statistic.SWIM_ONE_CM));
-            pstmt.setInt(9, getSafeStat(player, org.bukkit.Statistic.FLY_ONE_CM));
-            pstmt.setInt(10, getSafeStat(player, org.bukkit.Statistic.JUMP));
-            
-            // Activity statistics
-            pstmt.setInt(11, getSafeStat(player, org.bukkit.Statistic.ANIMALS_BRED));
-            pstmt.setInt(12, getSafeStat(player, org.bukkit.Statistic.DAMAGE_TAKEN));
-            pstmt.setInt(13, getSafeStat(player, org.bukkit.Statistic.DAMAGE_DEALT));
-            pstmt.setInt(14, getSafeStat(player, org.bukkit.Statistic.FISH_CAUGHT));
-            pstmt.setInt(15, getSafeStatTotal(player, org.bukkit.Statistic.CRAFT_ITEM));
-            pstmt.setInt(16, getSafeStat(player, org.bukkit.Statistic.MOB_KILLS));
-            pstmt.executeUpdate();
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, player.getUniqueId().toString());
+                
+                // Block statistics
+                pstmt.setInt(2, getSafeStat(player, org.bukkit.Statistic.MINE_BLOCK));
+                pstmt.setInt(3, getSafeStat(player, org.bukkit.Statistic.USE_ITEM));
+                
+                // Combat statistics
+                pstmt.setInt(4, getSafeStat(player, org.bukkit.Statistic.DEATHS));
+                pstmt.setInt(5, getSafeStat(player, org.bukkit.Statistic.PLAYER_KILLS));
+                pstmt.setInt(6, getSafeStat(player, org.bukkit.Statistic.MOB_KILLS));
+                pstmt.setInt(7, getSafeStat(player, org.bukkit.Statistic.JUMP));
+                
+                // Movement statistics
+                int walkDistance = getSafeStat(player, org.bukkit.Statistic.WALK_ONE_CM);
+                int sprintDistance = getSafeStat(player, org.bukkit.Statistic.SPRINT_ONE_CM);
+                int swimDistance = getSafeStat(player, org.bukkit.Statistic.SWIM_ONE_CM);
+                int flyDistance = getSafeStat(player, org.bukkit.Statistic.FLY_ONE_CM);
+                
+                pstmt.setInt(8, walkDistance);
+                pstmt.setInt(9, sprintDistance);
+                pstmt.setInt(10, swimDistance);
+                pstmt.setInt(11, flyDistance);
+                pstmt.setInt(12, walkDistance + sprintDistance + swimDistance + flyDistance);
+                
+                // Other statistics
+                pstmt.setInt(13, getSafeStat(player, org.bukkit.Statistic.DAMAGE_TAKEN));
+                pstmt.setInt(14, getSafeStat(player, org.bukkit.Statistic.DAMAGE_DEALT));
+                pstmt.setInt(15, getSafeStat(player, org.bukkit.Statistic.FISH_CAUGHT));
+                pstmt.setInt(16, getSafeStat(player, org.bukkit.Statistic.ANIMALS_BRED));
+                pstmt.setInt(17, getSafeStat(player, org.bukkit.Statistic.CRAFT_ITEM));
+                pstmt.setInt(18, getSafeStat(player, org.bukkit.Statistic.DROP));
+                pstmt.setInt(19, getSafeStat(player, org.bukkit.Statistic.USE_ITEM));
+                
+                // Time played statistics
+                int timePlayedTicks = getSafeStat(player, org.bukkit.Statistic.PLAY_ONE_MINUTE);
+                pstmt.setInt(20, timePlayedTicks);
+                pstmt.setDouble(21, timePlayedTicks / 72000.0);
+                
+                pstmt.executeUpdate();
+            }
+
+            // Update last online time in players table
+            String lastOnlineSql = "INSERT OR REPLACE INTO players (uuid, name, last_online) VALUES (?, ?, CURRENT_TIMESTAMP)";
+            try (PreparedStatement pstmt = conn.prepareStatement(lastOnlineSql)) {
+                pstmt.setString(1, player.getUniqueId().toString());
+                pstmt.setString(2, player.getName());
+                pstmt.executeUpdate();
+            }
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to update player statistics: " + e.getMessage());
         }
@@ -243,15 +271,25 @@ public class DatabaseManager {
 
     private int getSafeStat(Player player, org.bukkit.Statistic statistic) {
         try {
-            if (statistic == org.bukkit.Statistic.MINE_BLOCK) {
+            if (statistic == org.bukkit.Statistic.MINE_BLOCK || 
+                statistic == org.bukkit.Statistic.USE_ITEM || 
+                statistic == org.bukkit.Statistic.CRAFT_ITEM ||
+                statistic == org.bukkit.Statistic.BREAK_ITEM ||
+                statistic == org.bukkit.Statistic.PICKUP ||
+                statistic == org.bukkit.Statistic.DROP) {
                 int total = 0;
                 for (org.bukkit.Material material : org.bukkit.Material.values()) {
-                    if (material.isBlock()) {
-                        try {
+                    try {
+                        if ((statistic == org.bukkit.Statistic.MINE_BLOCK && material.isBlock()) ||
+                            (statistic == org.bukkit.Statistic.USE_ITEM && material.isItem()) ||
+                            (statistic == org.bukkit.Statistic.CRAFT_ITEM && material.isItem()) ||
+                            (statistic == org.bukkit.Statistic.BREAK_ITEM && material.isItem() && material.getMaxDurability() > 0) ||
+                            (statistic == org.bukkit.Statistic.PICKUP && material.isItem()) ||
+                            (statistic == org.bukkit.Statistic.DROP && material.isItem())) {
                             total += player.getStatistic(statistic, material);
-                        } catch (Exception ignored) {
-                            // Some materials might not be valid for this statistic
                         }
+                    } catch (Exception ignored) {
+                        // Skip invalid materials for this statistic
                     }
                 }
                 return total;
@@ -259,39 +297,6 @@ public class DatabaseManager {
             return player.getStatistic(statistic);
         } catch (Exception e) {
             plugin.getLogger().warning("Failed to get statistic " + statistic.name() + " for player " + player.getName() + ": " + e.getMessage());
-            return 0;
-        }
-    }
-
-    private int getSafeStat(Player player, org.bukkit.Statistic statistic, org.bukkit.Material material) {
-        try {
-            return player.getStatistic(statistic, material);
-        } catch (Exception e) {
-            plugin.getLogger().warning("Failed to get statistic " + statistic.name() + " with material " + material.name() + " for player " + player.getName() + ": " + e.getMessage());
-            return 0;
-        }
-    }
-
-    private int getSafeStatTotal(Player player, org.bukkit.Statistic statistic) {
-        try {
-            // For statistics that require materials/entities, we need to sum across all types
-            if (statistic == org.bukkit.Statistic.USE_ITEM || statistic == org.bukkit.Statistic.CRAFT_ITEM) {
-                int total = 0;
-                for (org.bukkit.Material material : org.bukkit.Material.values()) {
-                    if (material.isItem()) {
-                        try {
-                            total += player.getStatistic(statistic, material);
-                        } catch (Exception ignored) {
-                            // Some materials might not be valid for this statistic
-                        }
-                    }
-                }
-                return total;
-            } else {
-                return player.getStatistic(statistic);
-            }
-        } catch (Exception e) {
-            plugin.getLogger().warning("Failed to get total statistic " + statistic.name() + " for player " + player.getName() + ": " + e.getMessage());
             return 0;
         }
     }
