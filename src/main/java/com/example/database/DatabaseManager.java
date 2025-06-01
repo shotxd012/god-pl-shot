@@ -142,29 +142,41 @@ public class DatabaseManager {
     }
 
     public void updatePlayerStatus(Player player) {
-        String sql = "INSERT OR REPLACE INTO player_status (" +
-                    "player_uuid, player_name, health, max_health, food_level, saturation, " +
-                    "game_mode, level, exp, total_experience, location_x, location_y, location_z, " +
-                    "world_name, ping, last_updated) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
-        
-        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
-            pstmt.setString(1, player.getUniqueId().toString());
-            pstmt.setString(2, player.getName());
-            pstmt.setDouble(3, player.getHealth());
-            pstmt.setDouble(4, player.getMaxHealth());
-            pstmt.setInt(5, player.getFoodLevel());
-            pstmt.setDouble(6, player.getSaturation());
-            pstmt.setString(7, player.getGameMode().toString());
-            pstmt.setInt(8, player.getLevel());
-            pstmt.setDouble(9, player.getExp());
-            pstmt.setInt(10, player.getTotalExperience());
-            pstmt.setDouble(11, player.getLocation().getX());
-            pstmt.setDouble(12, player.getLocation().getY());
-            pstmt.setDouble(13, player.getLocation().getZ());
-            pstmt.setString(14, player.getWorld().getName());
-            pstmt.setInt(15, player.getPing());
-            pstmt.executeUpdate();
+        try (Connection conn = getConnection()) {
+            if (conn == null) return;
+
+            String sql = "INSERT OR REPLACE INTO player_status (" +
+                        "player_uuid, player_name, health, max_health, food_level, saturation, " +
+                        "game_mode, level, exp, total_experience, location_x, location_y, location_z, " +
+                        "world_name, ping, last_updated) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
+            
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, player.getUniqueId().toString());
+                pstmt.setString(2, player.getName());
+                pstmt.setDouble(3, player.getHealth());
+                pstmt.setDouble(4, player.getMaxHealth());
+                pstmt.setInt(5, player.getFoodLevel());
+                pstmt.setDouble(6, player.getSaturation());
+                pstmt.setString(7, player.getGameMode().toString());
+                pstmt.setInt(8, player.getLevel());
+                pstmt.setDouble(9, player.getExp());
+                pstmt.setInt(10, player.getTotalExperience());
+                pstmt.setDouble(11, player.getLocation().getX());
+                pstmt.setDouble(12, player.getLocation().getY());
+                pstmt.setDouble(13, player.getLocation().getZ());
+                pstmt.setString(14, player.getWorld().getName());
+                pstmt.setInt(15, player.getPing());
+                pstmt.executeUpdate();
+            }
+
+            // Update last online time in players table
+            String lastOnlineSql = "INSERT OR REPLACE INTO players (uuid, name, last_online) VALUES (?, ?, CURRENT_TIMESTAMP)";
+            try (PreparedStatement pstmt = conn.prepareStatement(lastOnlineSql)) {
+                pstmt.setString(1, player.getUniqueId().toString());
+                pstmt.setString(2, player.getName());
+                pstmt.executeUpdate();
+            }
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to update player status: " + e.getMessage());
         }
@@ -269,6 +281,10 @@ public class DatabaseManager {
             if (connection == null || connection.isClosed()) {
                 Class.forName("org.sqlite.JDBC");
                 connection = DriverManager.getConnection("jdbc:sqlite:" + plugin.getDataFolder() + "/player_data.db");
+                // Enable foreign keys
+                try (Statement stmt = connection.createStatement()) {
+                    stmt.execute("PRAGMA foreign_keys = ON");
+                }
             }
             return connection;
         } catch (Exception e) {
@@ -382,99 +398,116 @@ public class DatabaseManager {
 
     public List<Map<String, Object>> getAllPlayersData() {
         List<Map<String, Object>> playersData = new ArrayList<>();
-        
-        String sql = "SELECT DISTINCT player_uuid, player_name, " +
-                    "(SELECT SUM(session_duration) FROM player_sessions WHERE player_uuid = ps.player_uuid) as total_playtime, " +
-                    "(SELECT MIN(login_time) FROM player_sessions WHERE player_uuid = ps.player_uuid) as first_join, " +
-                    "(SELECT COUNT(*) FROM player_achievements WHERE player_uuid = ps.player_uuid AND completed = 1) as completed_achievements " +
-                    "FROM player_sessions ps " +
-                    "ORDER BY total_playtime DESC";
-        
-        try (Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            
-            while (rs.next()) {
-                Map<String, Object> playerData = new HashMap<>();
-                playerData.put("uuid", rs.getString("player_uuid"));
-                playerData.put("name", rs.getString("player_name"));
-                playerData.put("total_playtime", rs.getLong("total_playtime"));
-                playerData.put("first_join", rs.getString("first_join"));
-                playerData.put("completed_achievements", rs.getInt("completed_achievements"));
-                
-                // Get recent sessions
-                String sessionsSql = "SELECT login_time, logout_time, session_duration " +
-                                   "FROM player_sessions " +
-                                   "WHERE player_uuid = ? " +
-                                   "ORDER BY login_time DESC LIMIT 3";
-                try (PreparedStatement pstmt = connection.prepareStatement(sessionsSql)) {
-                    pstmt.setString(1, rs.getString("player_uuid"));
-                    ResultSet sessionsRs = pstmt.executeQuery();
-                    List<Map<String, Object>> sessions = new ArrayList<>();
-                    while (sessionsRs.next()) {
-                        Map<String, Object> session = new HashMap<>();
-                        session.put("login_time", sessionsRs.getString("login_time"));
-                        session.put("logout_time", sessionsRs.getString("logout_time"));
-                        session.put("session_duration", sessionsRs.getLong("session_duration"));
-                        sessions.add(session);
-                    }
-                    playerData.put("recent_sessions", sessions);
-                }
+        try (Connection conn = getConnection()) {
+            if (conn == null) return playersData;
 
-                // Check if player is currently online
-                org.bukkit.entity.Player onlinePlayer = org.bukkit.Bukkit.getPlayer(java.util.UUID.fromString(rs.getString("player_uuid")));
-                playerData.put("is_online", onlinePlayer != null);
+            String sql = "SELECT DISTINCT p.uuid, p.name, p.first_join, p.last_online, p.total_playtime, " +
+                        "(SELECT COUNT(*) FROM player_achievements WHERE player_uuid = p.uuid AND completed = 1) as completed_achievements " +
+                        "FROM players p " +
+                        "ORDER BY p.total_playtime DESC";
+            
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(sql)) {
                 
-                if (onlinePlayer != null) {
-                    // Player is online - get live data
-                    playerData.put("health", onlinePlayer.getHealth());
-                    playerData.put("max_health", onlinePlayer.getMaxHealth());
-                    playerData.put("food_level", onlinePlayer.getFoodLevel());
-                    playerData.put("saturation", onlinePlayer.getSaturation());
-                    playerData.put("game_mode", onlinePlayer.getGameMode().toString());
-                    playerData.put("level", onlinePlayer.getLevel());
-                    playerData.put("exp", onlinePlayer.getExp());
-                    playerData.put("total_experience", onlinePlayer.getTotalExperience());
-                    playerData.put("location", Arrays.asList(
-                        onlinePlayer.getLocation().getX(),
-                        onlinePlayer.getLocation().getY(),
-                        onlinePlayer.getLocation().getZ()
-                    ));
-                    playerData.put("world", onlinePlayer.getWorld().getName());
-                    playerData.put("ping", onlinePlayer.getPing());
-                    playerData.put("last_played", onlinePlayer.getLastPlayed());
-                } else {
-                    // Player is offline - get last known status from database
-                    String statusSql = "SELECT * FROM player_status WHERE player_uuid = ?";
-                    try (PreparedStatement pstmt = connection.prepareStatement(statusSql)) {
-                        pstmt.setString(1, rs.getString("player_uuid"));
-                        ResultSet statusRs = pstmt.executeQuery();
-                        if (statusRs.next()) {
-                            playerData.put("health", statusRs.getDouble("health"));
-                            playerData.put("max_health", statusRs.getDouble("max_health"));
-                            playerData.put("food_level", statusRs.getInt("food_level"));
-                            playerData.put("saturation", statusRs.getDouble("saturation"));
-                            playerData.put("game_mode", statusRs.getString("game_mode"));
-                            playerData.put("level", statusRs.getInt("level"));
-                            playerData.put("exp", statusRs.getDouble("exp"));
-                            playerData.put("total_experience", statusRs.getInt("total_experience"));
-                            playerData.put("location", Arrays.asList(
-                                statusRs.getDouble("location_x"),
-                                statusRs.getDouble("location_y"),
-                                statusRs.getDouble("location_z")
-                            ));
-                            playerData.put("world", statusRs.getString("world_name"));
-                            playerData.put("ping", statusRs.getInt("ping"));
-                            playerData.put("last_updated", statusRs.getString("last_updated"));
+                while (rs.next()) {
+                    Map<String, Object> playerData = new HashMap<>();
+                    String uuid = rs.getString("uuid");
+                    playerData.put("uuid", uuid);
+                    playerData.put("name", rs.getString("name"));
+                    playerData.put("total_playtime", rs.getLong("total_playtime"));
+                    playerData.put("first_join", rs.getString("first_join"));
+                    playerData.put("last_online", rs.getString("last_online"));
+                    playerData.put("completed_achievements", rs.getInt("completed_achievements"));
+                    
+                    // Get recent sessions
+                    String sessionsSql = "SELECT login_time, logout_time, session_duration " +
+                                       "FROM player_sessions " +
+                                       "WHERE player_uuid = ? " +
+                                       "ORDER BY login_time DESC LIMIT 3";
+                    try (PreparedStatement pstmt = conn.prepareStatement(sessionsSql)) {
+                        pstmt.setString(1, uuid);
+                        ResultSet sessionsRs = pstmt.executeQuery();
+                        List<Map<String, Object>> sessions = new ArrayList<>();
+                        while (sessionsRs.next()) {
+                            Map<String, Object> session = new HashMap<>();
+                            session.put("login_time", sessionsRs.getString("login_time"));
+                            session.put("logout_time", sessionsRs.getString("logout_time"));
+                            session.put("session_duration", sessionsRs.getLong("session_duration"));
+                            sessions.add(session);
+                        }
+                        playerData.put("recent_sessions", sessions);
+                    }
+
+                    // Check if player is currently online
+                    org.bukkit.entity.Player onlinePlayer = org.bukkit.Bukkit.getPlayer(java.util.UUID.fromString(uuid));
+                    playerData.put("is_online", onlinePlayer != null);
+                    
+                    if (onlinePlayer != null) {
+                        // Player is online - get live data
+                        playerData.put("health", onlinePlayer.getHealth());
+                        playerData.put("max_health", onlinePlayer.getMaxHealth());
+                        playerData.put("food_level", onlinePlayer.getFoodLevel());
+                        playerData.put("saturation", onlinePlayer.getSaturation());
+                        playerData.put("game_mode", onlinePlayer.getGameMode().toString());
+                        playerData.put("level", onlinePlayer.getLevel());
+                        playerData.put("exp", onlinePlayer.getExp());
+                        playerData.put("total_experience", onlinePlayer.getTotalExperience());
+                        playerData.put("location", Arrays.asList(
+                            onlinePlayer.getLocation().getX(),
+                            onlinePlayer.getLocation().getY(),
+                            onlinePlayer.getLocation().getZ()
+                        ));
+                        playerData.put("world", onlinePlayer.getWorld().getName());
+                        playerData.put("ping", onlinePlayer.getPing());
+                    } else {
+                        // Player is offline - get last known status from database
+                        String statusSql = "SELECT * FROM player_status WHERE player_uuid = ?";
+                        try (PreparedStatement pstmt = conn.prepareStatement(statusSql)) {
+                            pstmt.setString(1, uuid);
+                            ResultSet statusRs = pstmt.executeQuery();
+                            if (statusRs.next()) {
+                                playerData.put("health", statusRs.getDouble("health"));
+                                playerData.put("max_health", statusRs.getDouble("max_health"));
+                                playerData.put("food_level", statusRs.getInt("food_level"));
+                                playerData.put("saturation", statusRs.getDouble("saturation"));
+                                playerData.put("game_mode", statusRs.getString("game_mode"));
+                                playerData.put("level", statusRs.getInt("level"));
+                                playerData.put("exp", statusRs.getDouble("exp"));
+                                playerData.put("total_experience", statusRs.getInt("total_experience"));
+                                playerData.put("location", Arrays.asList(
+                                    statusRs.getDouble("location_x"),
+                                    statusRs.getDouble("location_y"),
+                                    statusRs.getDouble("location_z")
+                                ));
+                                playerData.put("world", statusRs.getString("world_name"));
+                                playerData.put("ping", statusRs.getInt("ping"));
+                                playerData.put("last_updated", statusRs.getString("last_updated"));
+                            }
                         }
                     }
+
+                    // Get verification status
+                    String verificationSql = "SELECT is_verified, verification_code FROM player_verification WHERE player_uuid = ?";
+                    try (PreparedStatement pstmt = conn.prepareStatement(verificationSql)) {
+                        pstmt.setString(1, uuid);
+                        ResultSet verificationRs = pstmt.executeQuery();
+                        if (verificationRs.next()) {
+                            boolean isVerified = verificationRs.getBoolean("is_verified");
+                            playerData.put("is_verified", isVerified);
+                            if (!isVerified) {
+                                playerData.put("verification_code", verificationRs.getString("verification_code"));
+                            }
+                        } else {
+                            playerData.put("is_verified", false);
+                        }
+                    }
+                    
+                    playersData.add(playerData);
                 }
-                
-                playersData.add(playerData);
             }
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to get all players data: " + e.getMessage());
         }
-        
         return playersData;
     }
 
