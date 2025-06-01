@@ -246,84 +246,32 @@ public class ServerAPI {
                 }
 
                 String path = exchange.getRequestURI().getPath();
-                String uuidString = path.substring("/api/player/stats/".length());
-
-                UUID playerUuid;
-                Player player = null;
-
+                String uuid = path.substring("/api/player/stats/".length());
                 try {
-                    // First try to get player by UUID
-                    playerUuid = UUID.fromString(uuidString);
-                    player = Bukkit.getPlayer(playerUuid);
+                    Map<String, Object> stats = plugin.getDatabaseManager().getPlayerStats(UUID.fromString(uuid));
+                    if (stats.isEmpty()) {
+                        sendResponse(exchange, 404, gson.toJson(Map.of("error", "Player not found")));
+                        return;
+                    }
+                    
+                    // Ensure all required fields are present
+                    stats.putIfAbsent("statistics", new HashMap<>());
+                    stats.putIfAbsent("login_history", new ArrayList<>());
+                    stats.putIfAbsent("achievements", new ArrayList<>());
+                    stats.putIfAbsent("is_verified", false);
+                    
+                    // Format the response
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("success", true);
+                    response.put("data", stats);
+                    
+                    sendResponse(exchange, 200, gson.toJson(response));
                 } catch (IllegalArgumentException e) {
-                    // If UUID parsing fails, try to get player by name
-                    player = Bukkit.getPlayer(uuidString);
-                    if (player != null) {
-                        playerUuid = player.getUniqueId();
-                    } else {
-                        // Try to get UUID from database by name
-                        playerUuid = plugin.getDatabaseManager().getPlayerUuidByName(uuidString);
-                        if (playerUuid == null) {
-                            sendResponse(exchange, 404, gson.toJson(Map.of("error", "Player not found")));
-                            return;
-                        }
-                    }
-                }
-
-                // Get base stats from database
-                Map<String, Object> stats = plugin.getDatabaseManager().getPlayerStats(playerUuid);
-                if (stats.isEmpty()) {
-                    sendResponse(exchange, 404, gson.toJson(Map.of("error", "Player not found")));
-                    return;
-                }
-
-                // Add basic player information
-                stats.put("uuid", playerUuid.toString());
-                stats.put("is_online", player != null);
-                stats.put("achievements", stats.getOrDefault("achievements", new ArrayList<>()));
-                stats.put("login_history", stats.getOrDefault("login_history", new ArrayList<>()));
-                stats.put("total_playtime", stats.getOrDefault("total_playtime", 0L));
-                stats.put("first_join", stats.getOrDefault("first_join", ""));
-
-                if (player != null) {
-                    // Player is online - add live data
-                    stats.put("name", player.getName());
-                    stats.put("health", player.getHealth());
-                    stats.put("max_health", player.getMaxHealth());
-                    stats.put("game_mode", player.getGameMode().toString());
-                    stats.put("ping", player.getPing());
-                    stats.put("food_level", player.getFoodLevel());
-                    stats.put("saturation", player.getSaturation());
-                    stats.put("level", player.getLevel());
-                    stats.put("exp", player.getExp());
-                    stats.put("total_experience", player.getTotalExperience());
-                    stats.put("location", Arrays.asList(
-                        player.getLocation().getX(),
-                        player.getLocation().getY(),
-                        player.getLocation().getZ()
-                    ));
-                    stats.put("world", player.getWorld().getName());
-
-                    // Add live statistics
-                    Map<String, Object> liveStats = new HashMap<>();
-                    updatePlayerStats(liveStats, player);
-                    stats.put("statistics", liveStats);
-                }
-
-                // Add verification information
-                try {
-                    boolean isVerified = plugin.getDatabaseManager().isPlayerVerified(playerUuid);
-                    stats.put("is_verified", isVerified);
-                    if (!isVerified) {
-                        String verificationCode = plugin.getDatabaseManager().getVerificationCode(playerUuid);
-                        stats.put("verification_code", verificationCode);
-                    }
+                    sendResponse(exchange, 400, gson.toJson(Map.of("error", "Invalid UUID format")));
                 } catch (Exception e) {
-                    plugin.getLogger().warning("Error getting verification status for player " + (player != null ? player.getName() : playerUuid) + ": " + e.getMessage());
-                    stats.put("is_verified", false);
+                    plugin.getLogger().severe("Error getting player stats: " + e.getMessage());
+                    sendResponse(exchange, 500, gson.toJson(Map.of("error", "Internal server error")));
                 }
-
-                sendResponse(exchange, 200, gson.toJson(stats));
             });
 
             // Player achievements endpoint
@@ -512,12 +460,18 @@ public class ServerAPI {
 
     private void setupRoutes() {
         // Player stats endpoint
-        server.get("/api/player/stats/:uuid", ctx -> {
-            String uuid = ctx.pathParam("uuid");
+        server.createContext("/api/player/stats/", exchange -> {
+            if (!checkAuth(exchange)) {
+                sendResponse(exchange, 401, "Unauthorized");
+                return;
+            }
+
+            String path = exchange.getRequestURI().getPath();
+            String uuid = path.substring("/api/player/stats/".length());
             try {
                 Map<String, Object> stats = plugin.getDatabaseManager().getPlayerStats(UUID.fromString(uuid));
                 if (stats.isEmpty()) {
-                    ctx.status(404).json(Map.of("error", "Player not found"));
+                    sendResponse(exchange, 404, gson.toJson(Map.of("error", "Player not found")));
                     return;
                 }
                 
@@ -532,21 +486,22 @@ public class ServerAPI {
                 response.put("success", true);
                 response.put("data", stats);
                 
-                // Set content type and length
-                ctx.contentType("application/json");
-                String jsonResponse = new ObjectMapper().writeValueAsString(response);
-                ctx.header("Content-Length", String.valueOf(jsonResponse.getBytes(StandardCharsets.UTF_8).length));
-                ctx.result(jsonResponse);
+                sendResponse(exchange, 200, gson.toJson(response));
             } catch (IllegalArgumentException e) {
-                ctx.status(400).json(Map.of("error", "Invalid UUID format"));
+                sendResponse(exchange, 400, gson.toJson(Map.of("error", "Invalid UUID format")));
             } catch (Exception e) {
                 plugin.getLogger().severe("Error getting player stats: " + e.getMessage());
-                ctx.status(500).json(Map.of("error", "Internal server error"));
+                sendResponse(exchange, 500, gson.toJson(Map.of("error", "Internal server error")));
             }
         });
 
         // All players endpoint
-        server.get("/api/players", ctx -> {
+        server.createContext("/api/players", exchange -> {
+            if (!checkAuth(exchange)) {
+                sendResponse(exchange, 401, "Unauthorized");
+                return;
+            }
+
             try {
                 List<Map<String, Object>> players = plugin.getDatabaseManager().getAllPlayersData();
                 
@@ -555,44 +510,61 @@ public class ServerAPI {
                 response.put("success", true);
                 response.put("data", players);
                 
-                // Set content type and length
-                ctx.contentType("application/json");
-                String jsonResponse = new ObjectMapper().writeValueAsString(response);
-                ctx.header("Content-Length", String.valueOf(jsonResponse.getBytes(StandardCharsets.UTF_8).length));
-                ctx.result(jsonResponse);
+                sendResponse(exchange, 200, gson.toJson(response));
             } catch (Exception e) {
                 plugin.getLogger().severe("Error getting all players: " + e.getMessage());
-                ctx.status(500).json(Map.of("error", "Internal server error"));
+                sendResponse(exchange, 500, gson.toJson(Map.of("error", "Internal server error")));
             }
         });
 
         // Player verification endpoint
-        server.post("/api/player/verify", ctx -> {
+        server.createContext("/api/player/verify", exchange -> {
+            if (!checkAuth(exchange)) {
+                sendResponse(exchange, 401, "Unauthorized");
+                return;
+            }
+
+            if (!"POST".equals(exchange.getRequestMethod())) {
+                sendResponse(exchange, 405, "Method not allowed");
+                return;
+            }
+
             try {
-                Map<String, String> body = new ObjectMapper().readValue(ctx.body(), Map.class);
-                String uuid = body.get("uuid");
-                String code = body.get("code");
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                Map<String, String> requestBody = gson.fromJson(body, Map.class);
+                String uuid = requestBody.get("uuid");
+                String code = requestBody.get("code");
 
                 if (uuid == null || code == null) {
-                    ctx.status(400).json(Map.of("error", "Missing required fields"));
+                    sendResponse(exchange, 400, gson.toJson(Map.of("error", "Missing required fields")));
                     return;
                 }
 
-                boolean isValid = plugin.getDatabaseManager().verifyPlayer(UUID.fromString(uuid), code);
-                
-                // Format the response
-                Map<String, Object> response = new HashMap<>();
-                response.put("success", isValid);
-                response.put("message", isValid ? "Verification successful" : "Invalid verification code");
-                
-                // Set content type and length
-                ctx.contentType("application/json");
-                String jsonResponse = new ObjectMapper().writeValueAsString(response);
-                ctx.header("Content-Length", String.valueOf(jsonResponse.getBytes(StandardCharsets.UTF_8).length));
-                ctx.result(jsonResponse);
+                boolean isValid = plugin.getDatabaseManager().isPlayerVerified(UUID.fromString(uuid));
+                if (isValid) {
+                    sendResponse(exchange, 200, gson.toJson(Map.of(
+                        "success", true,
+                        "message", "Player is already verified"
+                    )));
+                    return;
+                }
+
+                String storedCode = plugin.getDatabaseManager().getVerificationCode(UUID.fromString(uuid));
+                if (storedCode != null && storedCode.equals(code)) {
+                    plugin.getDatabaseManager().setPlayerVerified(UUID.fromString(uuid), true);
+                    sendResponse(exchange, 200, gson.toJson(Map.of(
+                        "success", true,
+                        "message", "Verification successful"
+                    )));
+                } else {
+                    sendResponse(exchange, 400, gson.toJson(Map.of(
+                        "success", false,
+                        "message", "Invalid verification code"
+                    )));
+                }
             } catch (Exception e) {
                 plugin.getLogger().severe("Error verifying player: " + e.getMessage());
-                ctx.status(500).json(Map.of("error", "Internal server error"));
+                sendResponse(exchange, 500, gson.toJson(Map.of("error", "Internal server error")));
             }
         });
     }
