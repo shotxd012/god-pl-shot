@@ -442,7 +442,7 @@ public class ServerAPI {
             liveStats.put("blocks_broken", getSafeStatistic(player, org.bukkit.Statistic.MINE_BLOCK));
             liveStats.put("blocks_placed", getSafeStatistic(player, org.bukkit.Statistic.USE_ITEM));
             
-            // Combat statistics - use getSafeStatistic for all
+            // Combat statistics
             liveStats.put("deaths", getSafeStatistic(player, org.bukkit.Statistic.DEATHS));
             liveStats.put("player_kills", getSafeStatistic(player, org.bukkit.Statistic.PLAYER_KILLS));
             liveStats.put("mob_kills", getSafeStatistic(player, org.bukkit.Statistic.MOB_KILLS));
@@ -454,11 +454,11 @@ public class ServerAPI {
             int swimDistance = getSafeStatistic(player, org.bukkit.Statistic.SWIM_ONE_CM);
             int flyDistance = getSafeStatistic(player, org.bukkit.Statistic.FLY_ONE_CM);
             
-            liveStats.put("distance_walked_cm", walkDistance);
-            liveStats.put("distance_sprinted_cm", sprintDistance);
-            liveStats.put("distance_swum_cm", swimDistance);
-            liveStats.put("distance_flown_cm", flyDistance);
-            liveStats.put("total_distance_cm", walkDistance + sprintDistance + swimDistance + flyDistance);
+            liveStats.put("distance_walked", walkDistance);
+            liveStats.put("distance_sprinted", sprintDistance);
+            liveStats.put("distance_swum", swimDistance);
+            liveStats.put("distance_flown", flyDistance);
+            liveStats.put("total_distance", walkDistance + sprintDistance + swimDistance + flyDistance);
             
             // Other statistics
             liveStats.put("damage_taken", getSafeStatistic(player, org.bukkit.Statistic.DAMAGE_TAKEN));
@@ -467,11 +467,18 @@ public class ServerAPI {
             liveStats.put("animals_bred", getSafeStatistic(player, org.bukkit.Statistic.ANIMALS_BRED));
             liveStats.put("items_crafted", getSafeStatistic(player, org.bukkit.Statistic.CRAFT_ITEM));
             liveStats.put("items_dropped", getSafeStatistic(player, org.bukkit.Statistic.DROP));
+            liveStats.put("food_eaten", getSafeStatistic(player, org.bukkit.Statistic.USE_ITEM));
             
             // Time played statistics
             int timePlayedTicks = getSafeStatistic(player, org.bukkit.Statistic.PLAY_ONE_MINUTE);
             liveStats.put("time_played_ticks", timePlayedTicks);
             liveStats.put("time_played_hours", timePlayedTicks / 72000.0);
+
+            // Add last updated timestamp
+            liveStats.put("last_updated", new Timestamp(System.currentTimeMillis()).toString());
+
+            // Save the current statistics to database
+            plugin.getDatabaseManager().updatePlayerStats(player.getUniqueId(), liveStats);
 
             // Add verification status
             try {

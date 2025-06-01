@@ -22,6 +22,15 @@ public class DatabaseManager {
             
             // Create tables if they don't exist
             try (Statement stmt = connection.createStatement()) {
+                // Players table
+                stmt.execute("CREATE TABLE IF NOT EXISTS players (" +
+                    "uuid TEXT PRIMARY KEY," +
+                    "name TEXT NOT NULL," +
+                    "first_join TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                    "last_online TIMESTAMP," +
+                    "total_playtime INTEGER DEFAULT 0" +
+                    ")");
+
                 // Verification table
                 stmt.execute("CREATE TABLE IF NOT EXISTS player_verification (" +
                     "player_uuid TEXT PRIMARY KEY," +
@@ -54,31 +63,33 @@ public class DatabaseManager {
 
                 // Player statistics table
                 stmt.execute("CREATE TABLE IF NOT EXISTS player_statistics (" +
-                    "id INTEGER PRIMARY KEY AUTOINCREMENT," +
-                    "player_uuid TEXT NOT NULL," +
+                    "player_uuid TEXT PRIMARY KEY," +
                     "blocks_broken INTEGER DEFAULT 0," +
                     "blocks_placed INTEGER DEFAULT 0," +
                     "deaths INTEGER DEFAULT 0," +
-                    "kills INTEGER DEFAULT 0," +
+                    "player_kills INTEGER DEFAULT 0," +
+                    "mob_kills INTEGER DEFAULT 0," +
+                    "jumps INTEGER DEFAULT 0," +
                     "distance_walked INTEGER DEFAULT 0," +
                     "distance_sprinted INTEGER DEFAULT 0," +
                     "distance_swum INTEGER DEFAULT 0," +
                     "distance_flown INTEGER DEFAULT 0," +
-                    "jumps INTEGER DEFAULT 0," +
-                    "food_eaten INTEGER DEFAULT 0," +
+                    "total_distance INTEGER DEFAULT 0," +
                     "damage_taken INTEGER DEFAULT 0," +
                     "damage_dealt INTEGER DEFAULT 0," +
                     "fish_caught INTEGER DEFAULT 0," +
+                    "animals_bred INTEGER DEFAULT 0," +
                     "items_crafted INTEGER DEFAULT 0," +
-                    "mobs_killed INTEGER DEFAULT 0," +
-                    "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
-                    "UNIQUE(player_uuid)" +
+                    "items_dropped INTEGER DEFAULT 0," +
+                    "food_eaten INTEGER DEFAULT 0," +
+                    "time_played_ticks INTEGER DEFAULT 0," +
+                    "time_played_hours REAL DEFAULT 0.0," +
+                    "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
                     ")");
 
                 // Player status table for storing last known player state
                 stmt.execute("CREATE TABLE IF NOT EXISTS player_status (" +
-                    "id INTEGER PRIMARY KEY AUTOINCREMENT," +
-                    "player_uuid TEXT NOT NULL," +
+                    "player_uuid TEXT PRIMARY KEY," +
                     "player_name TEXT NOT NULL," +
                     "health REAL DEFAULT 20," +
                     "max_health REAL DEFAULT 20," +
@@ -93,8 +104,7 @@ public class DatabaseManager {
                     "location_z REAL DEFAULT 0," +
                     "world_name TEXT DEFAULT 'world'," +
                     "ping INTEGER DEFAULT 0," +
-                    "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
-                    "UNIQUE(player_uuid)" +
+                    "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
                     ")");
             }
         } catch (Exception e) {
@@ -325,7 +335,7 @@ public class DatabaseManager {
                 statistics.put("blocks_broken", rs.getInt("blocks_broken"));
                 statistics.put("blocks_placed", rs.getInt("blocks_placed"));
                 statistics.put("deaths", rs.getInt("deaths"));
-                statistics.put("kills", rs.getInt("kills"));
+                statistics.put("kills", rs.getInt("player_kills"));
                 statistics.put("distance_walked", rs.getInt("distance_walked"));
                 statistics.put("distance_sprinted", rs.getInt("distance_sprinted"));
                 statistics.put("distance_swum", rs.getInt("distance_swum"));
@@ -336,8 +346,8 @@ public class DatabaseManager {
                 statistics.put("damage_dealt", rs.getInt("damage_dealt"));
                 statistics.put("fish_caught", rs.getInt("fish_caught"));
                 statistics.put("items_crafted", rs.getInt("items_crafted"));
-                statistics.put("mobs_killed", rs.getInt("mobs_killed"));
-                statistics.put("total_distance", rs.getInt("distance_walked") + rs.getInt("distance_sprinted") + rs.getInt("distance_swum") + rs.getInt("distance_flown"));
+                statistics.put("mobs_killed", rs.getInt("mob_kills"));
+                statistics.put("total_distance", rs.getInt("total_distance"));
                 statistics.put("last_updated", rs.getString("last_updated"));
                 stats.put("statistics", statistics);
             }
@@ -518,5 +528,167 @@ public class DatabaseManager {
         } catch (SQLException e) {
             plugin.getLogger().warning("Error updating verification status for player " + playerUuid + ": " + e.getMessage());
         }
+    }
+
+    public void updatePlayerStats(UUID playerUuid, Map<String, Object> stats) {
+        try (Connection conn = getConnection()) {
+            // Update player statistics
+            String sql = "INSERT OR REPLACE INTO player_statistics (" +
+                        "player_uuid, blocks_broken, blocks_placed, deaths, player_kills, " +
+                        "mob_kills, jumps, distance_walked, distance_sprinted, distance_swum, " +
+                        "distance_flown, total_distance, damage_taken, damage_dealt, fish_caught, " +
+                        "animals_bred, items_crafted, items_dropped, food_eaten, time_played_ticks, " +
+                        "time_played_hours, last_updated) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
+
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setString(1, playerUuid.toString());
+                stmt.setInt(2, (int) stats.getOrDefault("blocks_broken", 0));
+                stmt.setInt(3, (int) stats.getOrDefault("blocks_placed", 0));
+                stmt.setInt(4, (int) stats.getOrDefault("deaths", 0));
+                stmt.setInt(5, (int) stats.getOrDefault("player_kills", 0));
+                stmt.setInt(6, (int) stats.getOrDefault("mob_kills", 0));
+                stmt.setInt(7, (int) stats.getOrDefault("jumps", 0));
+                stmt.setInt(8, (int) stats.getOrDefault("distance_walked", 0));
+                stmt.setInt(9, (int) stats.getOrDefault("distance_sprinted", 0));
+                stmt.setInt(10, (int) stats.getOrDefault("distance_swum", 0));
+                stmt.setInt(11, (int) stats.getOrDefault("distance_flown", 0));
+                stmt.setInt(12, (int) stats.getOrDefault("total_distance", 0));
+                stmt.setInt(13, (int) stats.getOrDefault("damage_taken", 0));
+                stmt.setInt(14, (int) stats.getOrDefault("damage_dealt", 0));
+                stmt.setInt(15, (int) stats.getOrDefault("fish_caught", 0));
+                stmt.setInt(16, (int) stats.getOrDefault("animals_bred", 0));
+                stmt.setInt(17, (int) stats.getOrDefault("items_crafted", 0));
+                stmt.setInt(18, (int) stats.getOrDefault("items_dropped", 0));
+                stmt.setInt(19, (int) stats.getOrDefault("food_eaten", 0));
+                stmt.setInt(20, (int) stats.getOrDefault("time_played_ticks", 0));
+                stmt.setDouble(21, (double) stats.getOrDefault("time_played_hours", 0.0));
+                
+                stmt.executeUpdate();
+            }
+
+            // Update player status
+            String statusSql = "INSERT OR REPLACE INTO player_status (" +
+                             "player_uuid, player_name, health, max_health, food_level, " +
+                             "saturation, game_mode, level, exp, total_experience, " +
+                             "location_x, location_y, location_z, world_name, ping, last_updated) " +
+                             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
+
+            try (PreparedStatement stmt = conn.prepareStatement(statusSql)) {
+                stmt.setString(1, playerUuid.toString());
+                stmt.setString(2, (String) stats.getOrDefault("name", ""));
+                stmt.setDouble(3, (double) stats.getOrDefault("health", 20.0));
+                stmt.setDouble(4, (double) stats.getOrDefault("max_health", 20.0));
+                stmt.setInt(5, (int) stats.getOrDefault("food_level", 20));
+                stmt.setDouble(6, (double) stats.getOrDefault("saturation", 5.0));
+                stmt.setString(7, (String) stats.getOrDefault("game_mode", "SURVIVAL"));
+                stmt.setInt(8, (int) stats.getOrDefault("level", 0));
+                stmt.setDouble(9, (double) stats.getOrDefault("exp", 0.0));
+                stmt.setInt(10, (int) stats.getOrDefault("total_experience", 0));
+                
+                // Handle location
+                List<Double> location = (List<Double>) stats.getOrDefault("location", Arrays.asList(0.0, 64.0, 0.0));
+                stmt.setDouble(11, location.get(0));
+                stmt.setDouble(12, location.get(1));
+                stmt.setDouble(13, location.get(2));
+                
+                stmt.setString(14, (String) stats.getOrDefault("world", "world"));
+                stmt.setInt(15, (int) stats.getOrDefault("ping", 0));
+                
+                stmt.executeUpdate();
+            }
+
+            // Update last online time in players table
+            String lastOnlineSql = "INSERT OR REPLACE INTO players (uuid, name, last_online) VALUES (?, ?, CURRENT_TIMESTAMP)";
+            try (PreparedStatement stmt = conn.prepareStatement(lastOnlineSql)) {
+                stmt.setString(1, playerUuid.toString());
+                stmt.setString(2, (String) stats.getOrDefault("name", ""));
+                stmt.executeUpdate();
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Error updating player stats: " + e.getMessage());
+        }
+    }
+
+    public Map<String, Object> getPlayerStats(UUID playerUuid) {
+        Map<String, Object> stats = new HashMap<>();
+        try (Connection conn = getConnection()) {
+            // Get player statistics
+            String sql = "SELECT * FROM player_stats WHERE player_uuid = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setString(1, playerUuid.toString());
+                ResultSet rs = stmt.executeQuery();
+                
+                if (rs.next()) {
+                    stats.put("blocks_broken", rs.getInt("blocks_broken"));
+                    stats.put("blocks_placed", rs.getInt("blocks_placed"));
+                    stats.put("deaths", rs.getInt("deaths"));
+                    stats.put("player_kills", rs.getInt("player_kills"));
+                    stats.put("mob_kills", rs.getInt("mob_kills"));
+                    stats.put("jumps", rs.getInt("jumps"));
+                    stats.put("distance_walked", rs.getInt("distance_walked"));
+                    stats.put("distance_sprinted", rs.getInt("distance_sprinted"));
+                    stats.put("distance_swum", rs.getInt("distance_swum"));
+                    stats.put("distance_flown", rs.getInt("distance_flown"));
+                    stats.put("total_distance", rs.getInt("total_distance"));
+                    stats.put("damage_taken", rs.getInt("damage_taken"));
+                    stats.put("damage_dealt", rs.getInt("damage_dealt"));
+                    stats.put("fish_caught", rs.getInt("fish_caught"));
+                    stats.put("animals_bred", rs.getInt("animals_bred"));
+                    stats.put("items_crafted", rs.getInt("items_crafted"));
+                    stats.put("items_dropped", rs.getInt("items_dropped"));
+                    stats.put("food_eaten", rs.getInt("food_eaten"));
+                    stats.put("time_played_ticks", rs.getInt("time_played_ticks"));
+                    stats.put("time_played_hours", rs.getDouble("time_played_hours"));
+                    stats.put("last_updated", rs.getTimestamp("last_updated"));
+                }
+            }
+
+            // Get player login history
+            String loginHistorySql = "SELECT * FROM player_login_history WHERE player_uuid = ? ORDER BY login_time DESC";
+            try (PreparedStatement stmt = conn.prepareStatement(loginHistorySql)) {
+                stmt.setString(1, playerUuid.toString());
+                ResultSet rs = stmt.executeQuery();
+                
+                List<Map<String, Object>> loginHistory = new ArrayList<>();
+                while (rs.next()) {
+                    Map<String, Object> login = new HashMap<>();
+                    login.put("login_time", rs.getTimestamp("login_time"));
+                    login.put("logout_time", rs.getTimestamp("logout_time"));
+                    login.put("session_duration", rs.getLong("session_duration"));
+                    loginHistory.add(login);
+                }
+                stats.put("login_history", loginHistory);
+            }
+
+            // Get player achievements
+            String achievementsSql = "SELECT * FROM player_achievements WHERE player_uuid = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(achievementsSql)) {
+                stmt.setString(1, playerUuid.toString());
+                ResultSet rs = stmt.executeQuery();
+                
+                List<String> achievements = new ArrayList<>();
+                while (rs.next()) {
+                    achievements.add(rs.getString("achievement"));
+                }
+                stats.put("achievements", achievements);
+            }
+
+            // Get player basic info
+            String playerSql = "SELECT * FROM players WHERE uuid = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(playerSql)) {
+                stmt.setString(1, playerUuid.toString());
+                ResultSet rs = stmt.executeQuery();
+                
+                if (rs.next()) {
+                    stats.put("first_join", rs.getTimestamp("first_join"));
+                    stats.put("last_online", rs.getTimestamp("last_online"));
+                    stats.put("total_playtime", rs.getLong("total_playtime"));
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Error getting player stats: " + e.getMessage());
+        }
+        return stats;
     }
 }
