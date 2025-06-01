@@ -244,27 +244,84 @@ public class ServerAPI {
                 }
 
                 String path = exchange.getRequestURI().getPath();
-                String uuid = path.substring("/api/player/stats/".length());
+                String uuidString = path.substring("/api/player/stats/".length());
+
+                UUID playerUuid;
+                Player player = null;
 
                 try {
-                    Map<String, Object> stats = plugin.getDatabaseManager().getPlayerStats(UUID.fromString(uuid));
-                    if (stats.isEmpty()) {
-                        sendResponse(exchange, 404, gson.toJson(Map.of("error", "Player not found")));
-                        return;
+                    // First try to get player by UUID
+                    playerUuid = UUID.fromString(uuidString);
+                    player = Bukkit.getPlayer(playerUuid);
+                } catch (IllegalArgumentException e) {
+                    // If UUID parsing fails, try to get player by name
+                    player = Bukkit.getPlayer(uuidString);
+                    if (player != null) {
+                        playerUuid = player.getUniqueId();
+                    } else {
+                        // Try to get UUID from database by name
+                        playerUuid = plugin.getDatabaseManager().getPlayerUuidByName(uuidString);
+                        if (playerUuid == null) {
+                            sendResponse(exchange, 404, gson.toJson(Map.of("error", "Player not found")));
+                            return;
+                        }
                     }
+                }
 
-                    // Add verification information
-                    boolean isVerified = plugin.getDatabaseManager().isPlayerVerified(UUID.fromString(uuid));
+                // Get base stats from database
+                Map<String, Object> stats = plugin.getDatabaseManager().getPlayerStats(playerUuid);
+                if (stats.isEmpty()) {
+                    sendResponse(exchange, 404, gson.toJson(Map.of("error", "Player not found")));
+                    return;
+                }
+
+                // Add basic player information
+                stats.put("uuid", playerUuid.toString());
+                stats.put("is_online", player != null);
+                stats.put("achievements", stats.getOrDefault("achievements", new ArrayList<>()));
+                stats.put("login_history", stats.getOrDefault("login_history", new ArrayList<>()));
+                stats.put("total_playtime", stats.getOrDefault("total_playtime", 0L));
+                stats.put("first_join", stats.getOrDefault("first_join", ""));
+
+                if (player != null) {
+                    // Player is online - add live data
+                    stats.put("name", player.getName());
+                    stats.put("health", player.getHealth());
+                    stats.put("max_health", player.getMaxHealth());
+                    stats.put("game_mode", player.getGameMode().toString());
+                    stats.put("ping", player.getPing());
+                    stats.put("food_level", player.getFoodLevel());
+                    stats.put("saturation", player.getSaturation());
+                    stats.put("level", player.getLevel());
+                    stats.put("exp", player.getExp());
+                    stats.put("total_experience", player.getTotalExperience());
+                    stats.put("location", Arrays.asList(
+                        player.getLocation().getX(),
+                        player.getLocation().getY(),
+                        player.getLocation().getZ()
+                    ));
+                    stats.put("world", player.getWorld().getName());
+
+                    // Add live statistics
+                    Map<String, Object> liveStats = new HashMap<>();
+                    updatePlayerStats(liveStats, player);
+                    stats.put("statistics", liveStats);
+                }
+
+                // Add verification information
+                try {
+                    boolean isVerified = plugin.getDatabaseManager().isPlayerVerified(playerUuid);
                     stats.put("is_verified", isVerified);
                     if (!isVerified) {
-                        String verificationCode = plugin.getDatabaseManager().getVerificationCode(UUID.fromString(uuid));
+                        String verificationCode = plugin.getDatabaseManager().getVerificationCode(playerUuid);
                         stats.put("verification_code", verificationCode);
                     }
-
-                    sendResponse(exchange, 200, gson.toJson(stats));
-                } catch (IllegalArgumentException e) {
-                    sendResponse(exchange, 400, gson.toJson(Map.of("error", "Invalid UUID format")));
+                } catch (Exception e) {
+                    plugin.getLogger().warning("Error getting verification status for player " + (player != null ? player.getName() : playerUuid) + ": " + e.getMessage());
+                    stats.put("is_verified", false);
                 }
+
+                sendResponse(exchange, 200, gson.toJson(stats));
             });
 
             // Player achievements endpoint
@@ -290,70 +347,6 @@ public class ServerAPI {
                 } catch (IllegalArgumentException e) {
                     sendResponse(exchange, 400, gson.toJson(Map.of("error", "Invalid UUID format")));
                 }
-            });
-
-            // Detailed player statistics endpoint
-            server.createContext("/api/player/detailed-stats/", exchange -> {
-                if (!checkAuth(exchange)) {
-                    sendResponse(exchange, 401, "Unauthorized");
-                    return;
-                }
-
-                String path = exchange.getRequestURI().getPath();
-                String uuidString = path.substring("/api/player/detailed-stats/".length());
-
-                UUID playerUuid;
-                Player player = null;
-
-                try {
-                    // First try to get player by UUID
-                    playerUuid = UUID.fromString(uuidString);
-                    player = Bukkit.getPlayer(playerUuid);
-                } catch (IllegalArgumentException e) {
-                    // If UUID parsing fails, try to get player by name
-                    player = Bukkit.getPlayer(uuidString);
-                    if (player != null) {
-                        playerUuid = player.getUniqueId();
-                    } else {
-                        // Try to get UUID from database by name
-                        playerUuid = plugin.getDatabaseManager().getPlayerUuidByName(uuidString);
-                        if (playerUuid == null) {
-                            sendResponse(exchange, 404, gson.toJson(Map.of("error", "Player not found")));
-                            return;
-                        }
-                    }
-                }
-
-                // Get base stats from database
-                Map<String, Object> dbStats = plugin.getDatabaseManager().getPlayerStats(playerUuid);
-                if (dbStats.isEmpty()) {
-                    sendResponse(exchange, 404, gson.toJson(Map.of("error", "Player not found")));
-                    return;
-                }
-
-                Map<String, Object> response = new HashMap<>();
-                response.put("uuid", playerUuid.toString());
-                response.put("is_online", player != null);
-                response.put("achievements", dbStats.getOrDefault("achievements", new ArrayList<>()));
-                response.put("login_history", dbStats.getOrDefault("login_history", new ArrayList<>()));
-                response.put("total_playtime", dbStats.getOrDefault("total_playtime", 0L));
-                response.put("first_join", dbStats.getOrDefault("first_join", ""));
-
-                if (player != null) {
-                    // Player is online - update with live statistics
-                    response.put("name", player.getName());
-                    
-                    Map<String, Object> liveStats = new HashMap<>();
-                    
-                    updatePlayerStats(liveStats, player);
-
-                    response.put("statistics", liveStats);
-                } else {
-                    // For offline players, use the database statistics
-                    response.put("statistics", dbStats.getOrDefault("statistics", new HashMap<>()));
-                }
-
-                sendResponse(exchange, 200, gson.toJson(response));
             });
 
             // Start tick counter
